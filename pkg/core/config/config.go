@@ -15,16 +15,6 @@ import (
 	"github.com/cometbft/cometbft/types"
 )
 
-const (
-	ModuleConsole = "console"
-	ModuleDebug   = "debug"
-	ModulePprof   = "pprof"
-	ModuleComet   = "comet"
-	ModuleGraphQL = "graphql"
-)
-
-var defaultModules = []string{ModuleConsole, ModuleDebug, ModulePprof, ModuleComet, ModuleGraphQL}
-
 type RollupInterval struct {
 	BlockInterval int
 }
