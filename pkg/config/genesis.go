@@ -2,10 +2,13 @@ package config
 
 // json structure that is passed to genesis doc
 // all nodes start with the same config
-// values in here must be changed through governance
+// values in here must be changed through OpenAudio governance
 type GenesisData struct {
-	Pow POWGenesisConfig `json:"pow"`
-	Pos POSGenesisConfig `json:"pos"`
+	Pow     POWGenesisConfig     `json:"pow"`
+	Pos     POSGenesisConfig     `json:"pos"`
+	Storage StorageGenesisConfig `json:"storage"`
+	Oracle  OracleGenesisConfig  `json:"oracle"`
+	Eth     EthGenesisConfig     `json:"eth"`
 }
 
 type POWGenesisConfig struct {
@@ -24,4 +27,8 @@ type StorageGenesisConfig struct {
 
 type OracleGenesisConfig struct {
 	TakeDownNotifiers []string `json:"takedown_oracles"`
+}
+
+type EthGenesisConfig struct {
+	RegistryAddress string `json:"registry_address"`
 }

@@ -50,6 +50,7 @@ type ServerConfig struct {
 	H2C       bool          `mapstructure:"h2c"` // Enable HTTP/2 cleartext for gRPC
 	TLS       TLSConfig     `mapstructure:"tls"`
 	Console   ConsoleConfig `mapstructure:"console"`
+	Socket    SocketConfig  `mapstructure:"socket"`
 }
 
 type TLSConfig struct {
@@ -62,6 +63,11 @@ type TLSConfig struct {
 type ConsoleConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	SubRoute string `mapstructure:"subroute"`
+}
+
+type SocketConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Path    string `mapstructure:"path"`
 }
 
 type StorageConfig struct {
