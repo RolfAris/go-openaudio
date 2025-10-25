@@ -42,7 +42,6 @@ const (
 
 // Root configuration for OpenAudio.
 type Config struct {
-	Home      string           `mapstructure:"home"`
 	CometBFT  *cmcfg.Config    `mapstructure:",squash"`
 	OpenAudio *OpenAudioConfig `mapstructure:"openaudio"`
 }
@@ -52,14 +51,12 @@ func DefaultConfig() *Config {
 	cmt.RootDir = DefaultOpenAudioDir
 
 	return &Config{
-		Home:      DefaultOpenAudioDir,
 		CometBFT:  cmt,
 		OpenAudio: DefaultOpenAudioConfig(DefaultOpenAudioDir),
 	}
 }
 
 func (c *Config) SetHome(home string) {
-	c.Home = home
 	c.CometBFT.SetRoot(home)
 
 	c.OpenAudio.Home = home
