@@ -34,7 +34,7 @@ const (
 	DefaultHTTPSPort = "8443"
 	DefaultHostname  = "127.0.0.1"
 	DefaultEndpoint  = "http://localhost:44000"
-	DefaultRPCURL    = "https://mainnet.infura.io/v3/YOUR_KEY"
+	DefaultRPCURL    = "http://localhost:8545"
 
 	// Default DSNs
 	DefaultPostgresDSN = "postgres://postgres:postgres@localhost:5432/openaudio?sslmode=disable"
