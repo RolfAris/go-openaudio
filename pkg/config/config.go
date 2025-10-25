@@ -1,196 +1,238 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 
 	cmcfg "github.com/cometbft/cometbft/config"
 )
 
 const (
-	DefaultOpenAudioConfigDir = ".openaudio"
-
-	// populated by ldflags
+	// Version info (populated by ldflags)
 	Tag    = ""
 	GitSHA = ""
+
+	// Directory layout
+	DefaultOpenAudioDir = ".openaudio"
+	DefaultConfigDir    = "config"
+	DefaultDataDir      = "data"
+	DefaultBlobsDir     = "blobs"
+	DefaultCertsDir     = "certs"
+	DefaultCacheDir     = "cache"
+
+	// File names
+	DefaultConfigFileName  = "config.toml"
+	DefaultGenesisFileName = "genesis.json"
+	DefaultSocketFileName  = "openaudio.sock"
+
+	// Logging
+	LogFormatPlain  = "plain"
+	LogFormatJSON   = "json"
+	DefaultLogLevel = "info"
+
+	// Defaults for networking and runtime
+	DefaultHTTPPort  = "8080"
+	DefaultHTTPSPort = "8443"
+	DefaultHostname  = "127.0.0.1"
+	DefaultEndpoint  = "http://localhost:44000"
+	DefaultRPCURL    = "https://mainnet.infura.io/v3/YOUR_KEY"
+
+	// Default DSNs
+	DefaultPostgresDSN = "postgres://postgres:postgres@localhost:5432/openaudio?sslmode=disable"
 )
 
 // Root configuration for OpenAudio.
 type Config struct {
+	Home      string           `mapstructure:"home"`
 	CometBFT  *cmcfg.Config    `mapstructure:",squash"`
 	OpenAudio *OpenAudioConfig `mapstructure:"openaudio"`
 }
 
 func DefaultConfig() *Config {
-	home := os.ExpandEnv(filepath.Join("$HOME", DefaultOpenAudioConfigDir))
 	cmt := cmcfg.DefaultConfig()
-	cmt.RootDir = home
+	cmt.RootDir = DefaultOpenAudioDir
 
 	return &Config{
+		Home:      DefaultOpenAudioDir,
 		CometBFT:  cmt,
-		OpenAudio: DefaultOpenAudioConfig(home),
+		OpenAudio: DefaultOpenAudioConfig(DefaultOpenAudioDir),
 	}
 }
 
+func (c *Config) SetHome(home string) {
+	c.Home = home
+	c.CometBFT.SetRoot(home)
+
+	c.OpenAudio.Home = home
+	c.OpenAudio.Version.Home = home
+	c.OpenAudio.Eth.Home = home
+	c.OpenAudio.DB.Home = home
+	c.OpenAudio.Blob.Home = home
+	c.OpenAudio.Operator.Home = home
+	c.OpenAudio.Server.Home = home
+
+	c.OpenAudio.Server.TLS.Home = home
+	c.OpenAudio.Server.Console.Home = home
+	c.OpenAudio.Server.Socket.Home = home
+}
+
+// OpenAudioConfig holds all OpenAudio-specific configuration.
 type OpenAudioConfig struct {
-	Version  VersionConfig  `mapstructure:"version"`
-	Eth      EthConfig      `mapstructure:"eth"`
-	DB       DBConfig       `mapstructure:"db"`
-	Blob     BlobConfig     `mapstructure:"blob"`
-	Operator OperatorConfig `mapstructure:"operator"`
-	Server   ServerConfig   `mapstructure:"server"`
+	Home     string          `mapstructure:"home"`
+	Version  *VersionConfig  `mapstructure:"version"`
+	Eth      *EthConfig      `mapstructure:"eth"`
+	DB       *DBConfig       `mapstructure:"db"`
+	Blob     *BlobConfig     `mapstructure:"blob"`
+	Operator *OperatorConfig `mapstructure:"operator"`
+	Server   *ServerConfig   `mapstructure:"server"`
 }
 
 func DefaultOpenAudioConfig(home string) *OpenAudioConfig {
 	return &OpenAudioConfig{
-		Version:  DefaultVersionConfig(),
-		Eth:      DefaultEthConfig(),
-		DB:       DefaultDBConfig(),
+		Home:     home,
+		Version:  DefaultVersionConfig(home),
+		Eth:      DefaultEthConfig(home),
+		DB:       DefaultDBConfig(home),
 		Blob:     DefaultBlobConfig(home),
-		Operator: DefaultOperatorConfig(),
+		Operator: DefaultOperatorConfig(home),
 		Server:   DefaultServerConfig(home),
 	}
 }
 
+// ---------------------------------------------------------
+// Sub-Configs
+// ---------------------------------------------------------
+
 type VersionConfig struct {
+	Home   string `mapstructure:"home"`
 	Tag    string `mapstructure:"tag"`
 	GitSHA string `mapstructure:"git_sha"`
 }
 
-func DefaultVersionConfig() VersionConfig {
-	return VersionConfig{Tag: Tag, GitSHA: GitSHA}
+func DefaultVersionConfig(home string) *VersionConfig {
+	return &VersionConfig{Home: home, Tag: Tag, GitSHA: GitSHA}
 }
 
 type EthConfig struct {
+	Home            string `mapstructure:"home"`
 	RpcURL          string `mapstructure:"rpcurl"`
 	RegistryAddress string `mapstructure:"registryaddress"`
 }
 
-func DefaultEthConfig() EthConfig {
-	return EthConfig{
-		RpcURL:          "https://mainnet.infura.io/v3/YOUR_KEY",
+func DefaultEthConfig(home string) *EthConfig {
+	return &EthConfig{
+		Home:            home,
+		RpcURL:          DefaultRPCURL,
 		RegistryAddress: "",
 	}
 }
 
 type DBConfig struct {
+	Home        string `mapstructure:"home"`
 	PostgresDSN string `mapstructure:"postgres_dsn"`
 }
 
-func DefaultDBConfig() DBConfig {
-	return DBConfig{
-		PostgresDSN: "postgres://postgres:postgres@localhost:5432/openaudio?sslmode=disable",
+func DefaultDBConfig(home string) *DBConfig {
+	return &DBConfig{
+		Home:        home,
+		PostgresDSN: DefaultPostgresDSN,
 	}
 }
 
 type BlobConfig struct {
+	Home                 string `mapstructure:"home"`
 	BlobStoreDSN         string `mapstructure:"blob_store_dsn"`
 	MoveFromBlobStoreDSN string `mapstructure:"move_from_blob_store_dsn"`
 }
 
-func DefaultBlobConfig(home string) BlobConfig {
-	blobDir := filepath.Join(home, "data", "blobs")
-	return BlobConfig{
+func DefaultBlobConfig(home string) *BlobConfig {
+	blobDir := filepath.Join(home, DefaultDataDir, DefaultBlobsDir)
+	return &BlobConfig{
+		Home:                 home,
 		BlobStoreDSN:         "file://" + blobDir,
 		MoveFromBlobStoreDSN: "",
 	}
 }
 
 type OperatorConfig struct {
+	Home     string `mapstructure:"home"`
 	Address  string `mapstructure:"address"`
 	PrivKey  string `mapstructure:"privkey"`
 	Endpoint string `mapstructure:"endpoint"`
 }
 
-func DefaultOperatorConfig() OperatorConfig {
-	return OperatorConfig{
-		Endpoint: "http://localhost:44000",
+func DefaultOperatorConfig(home string) *OperatorConfig {
+	return &OperatorConfig{
+		Home:     home,
+		Endpoint: DefaultEndpoint,
 	}
 }
 
 type ServerConfig struct {
-	Port      string        `mapstructure:"port"`
-	HTTPSPort string        `mapstructure:"https_port"`
-	Hostname  string        `mapstructure:"hostname"`
-	H2C       bool          `mapstructure:"h2c"`
-	TLS       TLSConfig     `mapstructure:"tls"`
-	Console   ConsoleConfig `mapstructure:"console"`
-	Socket    SocketConfig  `mapstructure:"socket"`
+	Home      string         `mapstructure:"home"`
+	Port      string         `mapstructure:"port"`
+	HTTPSPort string         `mapstructure:"https_port"`
+	Hostname  string         `mapstructure:"hostname"`
+	H2C       bool           `mapstructure:"h2c"`
+	TLS       *TLSConfig     `mapstructure:"tls"`
+	Console   *ConsoleConfig `mapstructure:"console"`
+	Socket    *SocketConfig  `mapstructure:"socket"`
 }
 
-func DefaultServerConfig(home string) ServerConfig {
-	return ServerConfig{
-		Port:      "8080",
-		HTTPSPort: "8443",
-		Hostname:  "127.0.0.1",
+func DefaultServerConfig(home string) *ServerConfig {
+	return &ServerConfig{
+		Home:      home,
+		Port:      DefaultHTTPPort,
+		HTTPSPort: DefaultHTTPSPort,
+		Hostname:  DefaultHostname,
 		H2C:       true,
 		TLS:       DefaultTLSConfig(home),
-		Console:   DefaultConsoleConfig(),
+		Console:   DefaultConsoleConfig(home),
 		Socket:    DefaultSocketConfig(home),
 	}
 }
 
 type TLSConfig struct {
+	Home       string `mapstructure:"home"`
 	Enabled    bool   `mapstructure:"enabled"`
 	SelfSigned bool   `mapstructure:"self_signed"`
 	CertDir    string `mapstructure:"cert_dir"`
 	CacheDir   string `mapstructure:"cache_dir"`
 }
 
-func DefaultTLSConfig(home string) TLSConfig {
-	return TLSConfig{
+func DefaultTLSConfig(home string) *TLSConfig {
+	return &TLSConfig{
+		Home:       home,
 		Enabled:    false,
 		SelfSigned: false,
-		CertDir:    filepath.Join(home, "config", "certs"),
-		CacheDir:   filepath.Join(home, "config", "cache"),
+		CertDir:    filepath.Join(home, DefaultConfigDir, DefaultCertsDir),
+		CacheDir:   filepath.Join(home, DefaultConfigDir, DefaultCacheDir),
 	}
 }
 
 type ConsoleConfig struct {
+	Home     string `mapstructure:"home"`
 	Enabled  bool   `mapstructure:"enabled"`
 	SubRoute string `mapstructure:"subroute"`
 }
 
-func DefaultConsoleConfig() ConsoleConfig {
-	return ConsoleConfig{
+func DefaultConsoleConfig(home string) *ConsoleConfig {
+	return &ConsoleConfig{
+		Home:     home,
 		Enabled:  true,
 		SubRoute: "/console",
 	}
 }
 
 type SocketConfig struct {
+	Home    string `mapstructure:"home"`
 	Enabled bool   `mapstructure:"enabled"`
 	Path    string `mapstructure:"path"`
 }
 
-func DefaultSocketConfig(home string) SocketConfig {
-	return SocketConfig{
+func DefaultSocketConfig(home string) *SocketConfig {
+	return &SocketConfig{
+		Home:    home,
 		Enabled: true,
-		Path:    filepath.Join(home, "openaudio.sock"),
+		Path:    filepath.Join(home, DefaultSocketFileName),
 	}
-}
-
-type StorageConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-}
-
-func DefaultStorageConfig() StorageConfig {
-	return StorageConfig{Enabled: true}
-}
-
-type CoreConfig struct {
-	OnlyCore bool   `mapstructure:"only_core"`
-	RootDir  string `mapstructure:"root_dir"`
-}
-
-func DefaultCoreConfig(home string) CoreConfig {
-	return CoreConfig{OnlyCore: false, RootDir: home}
-}
-
-type UptimeConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-}
-
-func DefaultUptimeConfig() UptimeConfig {
-	return UptimeConfig{Enabled: true}
 }
