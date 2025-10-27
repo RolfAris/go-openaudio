@@ -2,17 +2,20 @@ package app
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
 type App struct {
 	ctx    context.Context
+	config *config.Config
 	logger *zap.Logger
 }
 
-func NewApp(ctx context.Context, logger *zap.Logger) *App {
+func NewApp(ctx context.Context, config *config.Config) *App {
 	// core := core.NewCore(ctx, logger)
 	// storage := storage.NewStorage(ctx, logger)
 
@@ -23,8 +26,18 @@ func NewApp(ctx context.Context, logger *zap.Logger) *App {
 
 	return &App{
 		ctx:    ctx,
-		logger: logger,
+		config: config,
 	}
+}
+
+func (app *App) Init() error {
+	logger, err := app.config.OpenAudio.Logger.Build()
+	if err != nil {
+		return fmt.Errorf("building logger: %w", err)
+	}
+	app.logger = logger
+
+	return nil
 }
 
 func (app *App) Run() error {

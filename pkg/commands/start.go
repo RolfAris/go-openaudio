@@ -11,7 +11,6 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 func NewStartCmd() *cobra.Command {
@@ -32,13 +31,17 @@ func NewStartCmd() *cobra.Command {
 			}
 
 			cfgPath := filepath.Join(home, "config", "config.toml")
-			_, err := config.Load(cfgPath, home)
+			cfg, err := config.Load(cfgPath, home)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			logger, _ := zap.NewProduction()
-			app := app.NewApp(cmd.Context(), logger)
+			app := app.NewApp(cmd.Context(), cfg)
+
+			if err := app.Init(); err != nil {
+				return fmt.Errorf("app init: %w", err)
+			}
+
 			err = app.Run()
 			if errors.Is(err, context.Canceled) {
 				return nil

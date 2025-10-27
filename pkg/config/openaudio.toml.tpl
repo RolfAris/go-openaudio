@@ -7,8 +7,8 @@ tag = "{{ .OpenAudio.Version.Tag }}"
 git_sha = "{{ .OpenAudio.Version.GitSHA }}"
 
 [openaudio.eth]
-rpcurl = "{{ .OpenAudio.Eth.RpcURL }}"
-registryaddress = "{{ .OpenAudio.Eth.RegistryAddress }}"
+rpc_url = "{{ .OpenAudio.Eth.RpcURL }}"
+registry_address = "{{ .OpenAudio.Eth.RegistryAddress }}"
 
 [openaudio.db]
 postgres_dsn = "{{ .OpenAudio.DB.PostgresDSN }}"
@@ -39,3 +39,32 @@ subroute = "{{ .OpenAudio.Server.Console.SubRoute }}"
 [openaudio.server.socket]
 enabled = "{{ .OpenAudio.Server.Socket.Enabled }}"
 path = "{{ .OpenAudio.Server.Socket.Path }}"
+
+#############################################
+###       OpenAudio Logging Options       ###
+#############################################
+
+[openaudio.logger.level]
+level = "info"                   # debug, info, warn, error
+
+[openaudio.logger]
+development = false
+encoding = "json"                  # "json" or "console"
+disable_caller = false
+disable_stacktrace = false
+output_paths = ["stdout"]
+error_output_paths = ["stderr"]
+
+[openaudio.logger.encoder_config]
+message_key = "msg"
+level_key = "level"
+time_key = "ts"
+name_key = "logger"
+caller_key = "caller"
+stacktrace_key = "stacktrace"
+line_ending = "\n"
+encode_level = "lowercase"
+encode_time = "iso8601"
+encode_duration = "string"
+encode_caller = "short"
+

@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	cmcfg "github.com/cometbft/cometbft/config"
+	"go.uber.org/zap"
 )
 
 const (
@@ -75,6 +76,7 @@ func (c *Config) SetHome(home string) {
 // OpenAudioConfig holds all OpenAudio-specific configuration.
 type OpenAudioConfig struct {
 	Home     string          `mapstructure:"home"`
+	Logger   *zap.Config     `mapstructure:"logger"`
 	Version  *VersionConfig  `mapstructure:"version"`
 	Eth      *EthConfig      `mapstructure:"eth"`
 	DB       *DBConfig       `mapstructure:"db"`
@@ -84,8 +86,10 @@ type OpenAudioConfig struct {
 }
 
 func DefaultOpenAudioConfig(home string) *OpenAudioConfig {
+	loggerCfg := zap.NewProductionConfig()
 	return &OpenAudioConfig{
 		Home:     home,
+		Logger:   &loggerCfg,
 		Version:  DefaultVersionConfig(home),
 		Eth:      DefaultEthConfig(home),
 		DB:       DefaultDBConfig(home),
