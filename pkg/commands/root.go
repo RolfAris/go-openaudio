@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +27,6 @@ for the Open Audio Protocol (OAP).`,
 	return root
 }
 
-func Execute() error {
-	return NewRootCmd().Execute()
+func Execute(ctx context.Context) error {
+	return NewRootCmd().ExecuteContext(ctx)
 }

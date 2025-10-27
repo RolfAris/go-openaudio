@@ -1,14 +1,17 @@
 package commands
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/OpenAudio/go-openaudio/pkg/app"
 	"github.com/OpenAudio/go-openaudio/pkg/config"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
 func NewStartCmd() *cobra.Command {
@@ -29,17 +32,18 @@ func NewStartCmd() *cobra.Command {
 			}
 
 			cfgPath := filepath.Join(home, "config", "config.toml")
-			cfg, err := config.Load(cfgPath, home)
+			_, err := config.Load(cfgPath, home)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			fmt.Printf("starting OpenAudio node from %s...\n", home)
-			spew.Dump(cfg)
-
-			// Return your app runner with context cancellation support
-			// return app.Run(cmd.Context())
-			return nil
+			logger, _ := zap.NewProduction()
+			app := app.NewApp(cmd.Context(), logger)
+			err = app.Run()
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return err
 		},
 	}
 

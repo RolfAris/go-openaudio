@@ -49,8 +49,6 @@ func Load(path string, home string) (*Config, error) {
 	keyPath := cfg.CometBFT.PrivValidatorKeyFile()
 	keyStatePath := cfg.CometBFT.PrivValidatorStateFile()
 
-	fmt.Printf("%s %s \n", keyPath, keyStatePath)
-
 	if _, err := os.Stat(keyPath); err == nil {
 		pvKey := cmprivval.LoadFilePV(keyPath, keyStatePath)
 		privKey := pvKey.Key.PrivKey

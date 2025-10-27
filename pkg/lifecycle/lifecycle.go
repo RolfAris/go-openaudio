@@ -106,3 +106,7 @@ func (l *Lifecycle) ShutdownWithTimeout(timeout time.Duration) error {
 func (l *Lifecycle) Wait() {
 	l.wg.Wait()
 }
+
+func (l *Lifecycle) Context() context.Context {
+	return l.ctx
+}

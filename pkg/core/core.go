@@ -5,6 +5,7 @@ import (
 	"fmt"
 	_ "net/http/pprof"
 
+	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/OpenAudio/go-openaudio/pkg/core/console"
 	"github.com/OpenAudio/go-openaudio/pkg/core/db"
@@ -13,9 +14,38 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
 	"github.com/OpenAudio/go-openaudio/pkg/pos"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type CoreService interface {
+	GetBlock(ctx context.Context) (*v1.Block, error)
+}
+
+var _ CoreService = (*Core)(nil)
+
+type Core struct {
+	logger *zap.Logger
+}
+
+func NewCore(ctx context.Context, z *zap.Logger) *Core {
+	l := z.With(zap.String("service", "core"))
+	return &Core{
+		logger: l,
+	}
+}
+
+// GetBlock implements CoreService.
+func (c *Core) GetBlock(ctx context.Context) (*v1.Block, error) {
+	return &v1.Block{
+		Height:    -1,
+		Hash:      "blockhash",
+		Proposer:  "me",
+		ChainId:   "OAP",
+		Timestamp: timestamppb.Now(),
+	}, nil
+}
 
 func Run(ctx context.Context, lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, coreService *server.CoreService, ethService *eth.EthService) error {
 	return run(ctx, lc, logger, posChannel, coreService, ethService)
