@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/OpenAudio/go-openaudio/pkg/config"
-	"github.com/OpenAudio/go-openaudio/pkg/types"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -17,19 +16,18 @@ type Server struct {
 	logger *zap.Logger
 	e      *echo.Echo
 
-	core    types.CoreService
-	storage types.StorageService
+	core    *CoreServer
+	storage *StorageServer
+	system  *SystemServer
+	eth     *EthServer
 }
 
-func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger, c types.CoreService, s types.StorageService) *Server {
+func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger) *Server {
 	return &Server{
 		ctx:    ctx,
 		config: config,
 		logger: logger,
 		e:      echo.New(),
-
-		core:    c,
-		storage: s,
 	}
 }
 
@@ -41,7 +39,6 @@ func (s *Server) Init() error {
 	e.HideBanner = true
 	e.Logger = (*ZapEchoLogger)(s.logger)
 
-	e.Use(middleware.AddTrailingSlash())
 	e.Use(middleware.CORS())
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -52,7 +49,7 @@ func (s *Server) Init() error {
 		Timeout: ecfg.RequestTimeout,
 	}))
 
-	// register routes from routes.go
+	s.RegisterRoutes(e)
 
 	return nil
 }
