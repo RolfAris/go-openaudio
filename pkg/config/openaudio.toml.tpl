@@ -40,6 +40,10 @@ subroute = "{{ .OpenAudio.Server.Console.SubRoute }}"
 enabled = "{{ .OpenAudio.Server.Socket.Enabled }}"
 path = "{{ .OpenAudio.Server.Socket.Path }}"
 
+[openaudio.server.echo]
+ip_rate_limit = "{{ .OpenAudio.Server.Echo.IPRateLimit }}"
+request_timeout = "{{ .OpenAudio.Server.Echo.RequestTimeout }}"
+
 #############################################
 ###       OpenAudio Logging Options       ###
 #############################################

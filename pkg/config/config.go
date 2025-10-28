@@ -63,9 +63,13 @@ func DefaultConfig() *Config {
 }
 
 func (c *Config) SetHome(home string) {
+	// update CometBFT root
 	c.CometBFT.SetRoot(home)
 
+	// update top-level home
 	c.OpenAudio.Home = home
+
+	// update sub-configs that have derived paths
 	c.OpenAudio.Version.Home = home
 	c.OpenAudio.Eth.Home = home
 	c.OpenAudio.DB.Home = home
@@ -73,6 +77,13 @@ func (c *Config) SetHome(home string) {
 	c.OpenAudio.Operator.Home = home
 	c.OpenAudio.Server.Home = home
 
+	// recompute derived directories
+	c.OpenAudio.Blob.BlobStoreDSN = "file://" + filepath.Join(home, DefaultDataDir, DefaultBlobsDir)
+	c.OpenAudio.Server.Socket.Path = filepath.Join(home, DefaultSocketFileName)
+	c.OpenAudio.Server.TLS.CertDir = filepath.Join(home, DefaultConfigDir, DefaultCertsDir)
+	c.OpenAudio.Server.TLS.CacheDir = filepath.Join(home, DefaultConfigDir, DefaultCacheDir)
+
+	// propagate home for server nested configs that still hold it
 	c.OpenAudio.Server.TLS.Home = home
 	c.OpenAudio.Server.Console.Home = home
 	c.OpenAudio.Server.Socket.Home = home
