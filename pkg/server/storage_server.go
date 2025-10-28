@@ -6,11 +6,14 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/api/storage/v1/v1connect"
+	"github.com/OpenAudio/go-openaudio/pkg/mediorum/server"
 )
 
 var _ v1connect.StorageServiceHandler = (*StorageServer)(nil)
 
-type StorageServer struct{}
+type StorageServer struct {
+	s *server.MediorumServer
+}
 
 // GetHealth implements v1connect.StorageServiceHandler.
 func (s *StorageServer) GetHealth(context.Context, *connect.Request[v1.GetHealthRequest]) (*connect.Response[v1.GetHealthResponse], error) {

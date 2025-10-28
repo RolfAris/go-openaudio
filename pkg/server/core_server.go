@@ -6,11 +6,14 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
+	"github.com/OpenAudio/go-openaudio/pkg/core/server"
 )
 
 var _ v1connect.CoreServiceHandler = (*CoreServer)(nil)
 
-type CoreServer struct{}
+type CoreServer struct {
+	c *server.Server
+}
 
 // ForwardTransaction implements v1connect.CoreServiceHandler.
 func (c *CoreServer) ForwardTransaction(context.Context, *connect.Request[v1.ForwardTransactionRequest]) (*connect.Response[v1.ForwardTransactionResponse], error) {
