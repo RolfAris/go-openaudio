@@ -6,13 +6,11 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/api/storage/v1/v1connect"
-	"github.com/OpenAudio/go-openaudio/pkg/mediorum/server"
 )
 
 var _ v1connect.StorageServiceHandler = (*StorageServer)(nil)
 
 type StorageServer struct {
-	s *server.MediorumServer
 }
 
 // GetHealth implements v1connect.StorageServiceHandler.
@@ -47,7 +45,9 @@ func (s *StorageServer) GetUpload(context.Context, *connect.Request[v1.GetUpload
 
 // Ping implements v1connect.StorageServiceHandler.
 func (s *StorageServer) Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
-	panic("unimplemented")
+	return connect.NewResponse(&v1.PingResponse{
+		Message: "pong",
+	}), nil
 }
 
 // StreamTrack implements v1connect.StorageServiceHandler.

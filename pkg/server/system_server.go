@@ -19,5 +19,7 @@ func (s *SystemServer) GetHealth(context.Context, *connect.Request[v1.GetHealthR
 
 // Ping implements v1connect.SystemServiceHandler.
 func (s *SystemServer) Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
-	panic("unimplemented")
+	return connect.NewResponse(&v1.PingResponse{
+		Message: "pong",
+	}), nil
 }

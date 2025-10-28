@@ -6,13 +6,11 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
-	"github.com/OpenAudio/go-openaudio/pkg/core/server"
 )
 
 var _ v1connect.CoreServiceHandler = (*CoreServer)(nil)
 
 type CoreServer struct {
-	c *server.Server
 }
 
 // ForwardTransaction implements v1connect.CoreServiceHandler.
@@ -116,8 +114,10 @@ func (c *CoreServer) GetUploadByCID(context.Context, *connect.Request[v1.GetUplo
 }
 
 // Ping implements v1connect.CoreServiceHandler.
-func (c *CoreServer) Ping(context.Context, *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
-	panic("unimplemented")
+func (c *CoreServer) Ping(_ context.Context, req *connect.Request[v1.PingRequest]) (*connect.Response[v1.PingResponse], error) {
+	return connect.NewResponse(&v1.PingResponse{
+		Message: "pong",
+	}), nil
 }
 
 // SendTransaction implements v1connect.CoreServiceHandler.
