@@ -1,6 +1,7 @@
 package mediorum
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -17,11 +18,32 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/server"
 	"github.com/OpenAudio/go-openaudio/pkg/pos"
 	"github.com/OpenAudio/go-openaudio/pkg/registrar"
+	"github.com/OpenAudio/go-openaudio/pkg/types"
 	"github.com/OpenAudio/go-openaudio/pkg/version"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
+
+var _ types.StorageService = (*Storage)(nil)
+
+type Storage struct {
+	logger *zap.Logger
+
+	core *types.CoreService
+}
+
+// GetUpload implements types.StorageService.
+func (s *Storage) GetUpload(ctx context.Context) (string, error) {
+	return "yeah", nil
+}
+
+func NewStorage(ctx context.Context, z *zap.Logger) *Storage {
+	l := z.With(zap.String("service", "core"))
+	return &Storage{
+		logger: l,
+	}
+}
 
 func Run(lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {
 	env := os.Getenv("OPENAUDIO_ENV")

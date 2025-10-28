@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"time"
 
 	cmcfg "github.com/cometbft/cometbft/config"
 	"go.uber.org/zap"
@@ -13,12 +14,12 @@ const (
 	GitSHA = ""
 
 	// Directory layout
-	DefaultOpenAudioDir = ".openaudio"
-	DefaultConfigDir    = "config"
-	DefaultDataDir      = "data"
-	DefaultBlobsDir     = "blobs"
-	DefaultCertsDir     = "certs"
-	DefaultCacheDir     = "cache"
+	DefaultHomeDir   = ".openaudio"
+	DefaultConfigDir = "config"
+	DefaultDataDir   = "data"
+	DefaultBlobsDir  = "blobs"
+	DefaultCertsDir  = "certs"
+	DefaultCacheDir  = "cache"
 
 	// File names
 	DefaultConfigFileName  = "config.toml"
@@ -39,6 +40,10 @@ const (
 
 	// Default DSNs
 	DefaultPostgresDSN = "postgres://postgres:postgres@localhost:5432/openaudio?sslmode=disable"
+
+	// Defaults for echo server
+	DefaultRequestTimeout = 5 * time.Second
+	DefaultIPRateLimit    = 100
 )
 
 // Root configuration for OpenAudio.
@@ -49,11 +54,11 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	cmt := cmcfg.DefaultConfig()
-	cmt.RootDir = DefaultOpenAudioDir
+	cmt.RootDir = DefaultHomeDir
 
 	return &Config{
 		CometBFT:  cmt,
-		OpenAudio: DefaultOpenAudioConfig(DefaultOpenAudioDir),
+		OpenAudio: DefaultOpenAudioConfig(),
 	}
 }
 
@@ -85,17 +90,17 @@ type OpenAudioConfig struct {
 	Server   *ServerConfig   `mapstructure:"server"`
 }
 
-func DefaultOpenAudioConfig(home string) *OpenAudioConfig {
+func DefaultOpenAudioConfig() *OpenAudioConfig {
 	loggerCfg := zap.NewProductionConfig()
 	return &OpenAudioConfig{
-		Home:     home,
+		Home:     DefaultHomeDir,
 		Logger:   &loggerCfg,
-		Version:  DefaultVersionConfig(home),
-		Eth:      DefaultEthConfig(home),
-		DB:       DefaultDBConfig(home),
-		Blob:     DefaultBlobConfig(home),
-		Operator: DefaultOperatorConfig(home),
-		Server:   DefaultServerConfig(home),
+		Version:  DefaultVersionConfig(),
+		Eth:      DefaultEthConfig(),
+		DB:       DefaultDBConfig(),
+		Blob:     DefaultBlobConfig(),
+		Operator: DefaultOperatorConfig(),
+		Server:   DefaultServerConfig(),
 	}
 }
 
@@ -109,8 +114,8 @@ type VersionConfig struct {
 	GitSHA string `mapstructure:"git_sha"`
 }
 
-func DefaultVersionConfig(home string) *VersionConfig {
-	return &VersionConfig{Home: home, Tag: Tag, GitSHA: GitSHA}
+func DefaultVersionConfig() *VersionConfig {
+	return &VersionConfig{Home: DefaultHomeDir, Tag: Tag, GitSHA: GitSHA}
 }
 
 type EthConfig struct {
@@ -119,9 +124,9 @@ type EthConfig struct {
 	RegistryAddress string `mapstructure:"registryaddress"`
 }
 
-func DefaultEthConfig(home string) *EthConfig {
+func DefaultEthConfig() *EthConfig {
 	return &EthConfig{
-		Home:            home,
+		Home:            DefaultHomeDir,
 		RpcURL:          DefaultRPCURL,
 		RegistryAddress: "",
 	}
@@ -132,9 +137,9 @@ type DBConfig struct {
 	PostgresDSN string `mapstructure:"postgres_dsn"`
 }
 
-func DefaultDBConfig(home string) *DBConfig {
+func DefaultDBConfig() *DBConfig {
 	return &DBConfig{
-		Home:        home,
+		Home:        DefaultHomeDir,
 		PostgresDSN: DefaultPostgresDSN,
 	}
 }
@@ -145,10 +150,10 @@ type BlobConfig struct {
 	MoveFromBlobStoreDSN string `mapstructure:"move_from_blob_store_dsn"`
 }
 
-func DefaultBlobConfig(home string) *BlobConfig {
-	blobDir := filepath.Join(home, DefaultDataDir, DefaultBlobsDir)
+func DefaultBlobConfig() *BlobConfig {
+	blobDir := filepath.Join(DefaultHomeDir, DefaultDataDir, DefaultBlobsDir)
 	return &BlobConfig{
-		Home:                 home,
+		Home:                 DefaultHomeDir,
 		BlobStoreDSN:         "file://" + blobDir,
 		MoveFromBlobStoreDSN: "",
 	}
@@ -161,9 +166,9 @@ type OperatorConfig struct {
 	Endpoint string `mapstructure:"endpoint"`
 }
 
-func DefaultOperatorConfig(home string) *OperatorConfig {
+func DefaultOperatorConfig() *OperatorConfig {
 	return &OperatorConfig{
-		Home:     home,
+		Home:     DefaultHomeDir,
 		Endpoint: DefaultEndpoint,
 	}
 }
@@ -177,18 +182,20 @@ type ServerConfig struct {
 	TLS       *TLSConfig     `mapstructure:"tls"`
 	Console   *ConsoleConfig `mapstructure:"console"`
 	Socket    *SocketConfig  `mapstructure:"socket"`
+	Echo      *EchoConfig    `mapstructure:"echo"`
 }
 
-func DefaultServerConfig(home string) *ServerConfig {
+func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
-		Home:      home,
+		Home:      DefaultHomeDir,
 		Port:      DefaultHTTPPort,
 		HTTPSPort: DefaultHTTPSPort,
 		Hostname:  DefaultHostname,
 		H2C:       true,
-		TLS:       DefaultTLSConfig(home),
-		Console:   DefaultConsoleConfig(home),
-		Socket:    DefaultSocketConfig(home),
+		TLS:       DefaultTLSConfig(),
+		Console:   DefaultConsoleConfig(),
+		Socket:    DefaultSocketConfig(),
+		Echo:      DefaultEchoConfig(),
 	}
 }
 
@@ -200,13 +207,13 @@ type TLSConfig struct {
 	CacheDir   string `mapstructure:"cache_dir"`
 }
 
-func DefaultTLSConfig(home string) *TLSConfig {
+func DefaultTLSConfig() *TLSConfig {
 	return &TLSConfig{
-		Home:       home,
+		Home:       DefaultHomeDir,
 		Enabled:    false,
 		SelfSigned: false,
-		CertDir:    filepath.Join(home, DefaultConfigDir, DefaultCertsDir),
-		CacheDir:   filepath.Join(home, DefaultConfigDir, DefaultCacheDir),
+		CertDir:    filepath.Join(DefaultHomeDir, DefaultConfigDir, DefaultCertsDir),
+		CacheDir:   filepath.Join(DefaultHomeDir, DefaultConfigDir, DefaultCacheDir),
 	}
 }
 
@@ -216,9 +223,9 @@ type ConsoleConfig struct {
 	SubRoute string `mapstructure:"subroute"`
 }
 
-func DefaultConsoleConfig(home string) *ConsoleConfig {
+func DefaultConsoleConfig() *ConsoleConfig {
 	return &ConsoleConfig{
-		Home:     home,
+		Home:     DefaultHomeDir,
 		Enabled:  true,
 		SubRoute: "/console",
 	}
@@ -230,10 +237,22 @@ type SocketConfig struct {
 	Path    string `mapstructure:"path"`
 }
 
-func DefaultSocketConfig(home string) *SocketConfig {
+func DefaultSocketConfig() *SocketConfig {
 	return &SocketConfig{
-		Home:    home,
+		Home:    DefaultHomeDir,
 		Enabled: true,
-		Path:    filepath.Join(home, DefaultSocketFileName),
+		Path:    filepath.Join(DefaultHomeDir, DefaultSocketFileName),
+	}
+}
+
+type EchoConfig struct {
+	IPRateLimit    float64       `mapstructure:"ip_rate_limit"`
+	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+}
+
+func DefaultEchoConfig() *EchoConfig {
+	return &EchoConfig{
+		IPRateLimit:    DefaultIPRateLimit,
+		RequestTimeout: DefaultRequestTimeout,
 	}
 }

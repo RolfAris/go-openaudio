@@ -13,20 +13,19 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/eth"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
 	"github.com/OpenAudio/go-openaudio/pkg/pos"
+	"github.com/OpenAudio/go-openaudio/pkg/types"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type CoreService interface {
-	GetBlock(ctx context.Context) (*v1.Block, error)
-}
-
-var _ CoreService = (*Core)(nil)
+var _ types.CoreService = (*Core)(nil)
 
 type Core struct {
 	logger *zap.Logger
+
+	storage *types.StorageService
 }
 
 func NewCore(ctx context.Context, z *zap.Logger) *Core {
