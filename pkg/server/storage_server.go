@@ -13,6 +13,10 @@ var _ v1connect.StorageServiceHandler = (*StorageServer)(nil)
 type StorageServer struct {
 }
 
+func NewStorageServer() *StorageServer {
+	return &StorageServer{}
+}
+
 // GetHealth implements v1connect.StorageServiceHandler.
 func (s *StorageServer) GetHealth(context.Context, *connect.Request[v1.GetHealthRequest]) (*connect.Response[v1.GetHealthResponse], error) {
 	panic("unimplemented")

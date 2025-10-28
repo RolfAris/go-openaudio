@@ -12,6 +12,10 @@ var _ v1connect.EthServiceHandler = (*EthServer)(nil)
 
 type EthServer struct{}
 
+func NewEthServer() *EthServer {
+	return &EthServer{}
+}
+
 // GetActiveSlashProposalForAddress implements v1connect.EthServiceHandler.
 func (e *EthServer) GetActiveSlashProposalForAddress(context.Context, *connect.Request[v1.GetActiveSlashProposalForAddressRequest]) (*connect.Response[v1.GetActiveSlashProposalForAddressResponse], error) {
 	panic("unimplemented")

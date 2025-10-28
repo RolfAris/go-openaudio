@@ -12,6 +12,10 @@ var _ v1connect.SystemServiceHandler = (*SystemServer)(nil)
 
 type SystemServer struct{}
 
+func NewSystemServer() *SystemServer {
+	return &SystemServer{}
+}
+
 // GetHealth implements v1connect.SystemServiceHandler.
 func (s *SystemServer) GetHealth(context.Context, *connect.Request[v1.GetHealthRequest]) (*connect.Response[v1.GetHealthResponse], error) {
 	panic("unimplemented")

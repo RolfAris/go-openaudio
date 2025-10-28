@@ -32,10 +32,10 @@ const (
 	DefaultLogLevel = "info"
 
 	// Defaults for networking and runtime
-	DefaultHTTPPort  = "8080"
-	DefaultHTTPSPort = "8443"
-	DefaultHostname  = "127.0.0.1"
-	DefaultEndpoint  = "http://localhost:44000"
+	DefaultHostname  = "localhost"
+	DefaultHTTPPort  = "80"
+	DefaultHTTPSPort = "443"
+	DefaultEndpoint  = "https://localhost"
 	DefaultRPCURL    = "http://localhost:8545"
 
 	// Default DSNs

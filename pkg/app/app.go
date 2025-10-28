@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/OpenAudio/go-openaudio/pkg/config"
+	"github.com/OpenAudio/go-openaudio/pkg/server"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -13,6 +14,8 @@ type App struct {
 	ctx    context.Context
 	config *config.Config
 	logger *zap.Logger
+
+	server *server.Server
 }
 
 func NewApp(ctx context.Context, config *config.Config) *App {
@@ -21,8 +24,6 @@ func NewApp(ctx context.Context, config *config.Config) *App {
 
 	// core.SetStorage(storage)
 	// storage.SetCore(core)
-
-	// server := server.NewServer(ctx, logger, core, storage)
 
 	return &App{
 		ctx:    ctx,
@@ -36,6 +37,11 @@ func (app *App) Init() error {
 		return fmt.Errorf("building logger: %w", err)
 	}
 	app.logger = logger
+
+	app.server = server.NewServer(app.ctx, app.config, app.logger)
+	if err := app.server.Init(); err != nil {
+		return fmt.Errorf("initializing server: %w", err)
+	}
 
 	return nil
 }
@@ -55,12 +61,18 @@ func (app *App) Run() error {
 	})
 
 	g.Go(func() error {
-		return nil // app.server.Run()
+		if err := app.server.Run(); err != nil {
+			return fmt.Errorf("server crashed: %w", err)
+		}
+		app.logger.Info("server shutdown")
+		return nil
 	})
 
 	g.Go(func() error {
 		<-app.ctx.Done()
-		return app.ctx.Err()
+		app.logger.Info("app shutdown")
+		// Context cancellation during shutdown is expected, not an error
+		return nil
 	})
 
 	if err := g.Wait(); err != nil {

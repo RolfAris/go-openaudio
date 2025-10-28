@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/OpenAudio/go-openaudio/pkg/config"
+	servermw "github.com/OpenAudio/go-openaudio/pkg/server/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.akshayshah.org/connectproto"
@@ -52,6 +53,9 @@ type Server struct {
 	storage *StorageServer
 	system  *SystemServer
 	eth     *EthServer
+
+	httpServer  *http.Server
+	httpsServer *http.Server
 }
 
 func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger) *Server {
@@ -60,6 +64,11 @@ func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger) *
 		config: config,
 		logger: logger,
 		e:      echo.New(),
+
+		core:    NewCoreServer(),
+		storage: NewStorageServer(),
+		system:  NewSystemServer(),
+		eth:     NewEthServer(),
 	}
 }
 
@@ -73,10 +82,9 @@ func (s *Server) Init() error {
 	eth := s.eth
 
 	e.HideBanner = true
-	e.Logger = (*ZapEchoLogger)(s.logger)
 
+	e.Use(servermw.ZapLogger(s.logger))
 	e.Use(middleware.CORS())
-	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 
@@ -108,6 +116,29 @@ func (s *Server) Init() error {
 	restGroup.GET("/audio/:cid", stub)
 	restGroup.GET("/image/:cid", stub)
 
+	// Setup HTTP Server
+	cfg := s.config.OpenAudio.Server
+	httpAddr := fmt.Sprintf("%s:%s", cfg.Hostname, cfg.Port)
+	h2s := &http2.Server{}
+	s.httpServer = &http.Server{
+		Addr:    httpAddr,
+		Handler: h2c.NewHandler(s.e, h2s),
+	}
+
+	// Setup HTTPS Server (if enabled)
+	if cfg.TLS.Enabled {
+		httpsAddr := fmt.Sprintf("%s:%s", cfg.Hostname, cfg.HTTPSPort)
+		var err error
+		if cfg.TLS.SelfSigned {
+			s.httpsServer, err = s.setupSelfSignedTLS(httpsAddr)
+		} else {
+			s.httpsServer, err = s.setupAutoTLS(httpsAddr)
+		}
+		if err != nil {
+			return fmt.Errorf("setup TLS: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -115,60 +146,79 @@ func stub(e echo.Context) error {
 	return e.String(200, "unimplemented")
 }
 
-// Run starts both HTTP (port 80) and HTTPS (port 443, if enabled) servers.
-// Both support HTTP/2 (h2/h2c) for ConnectRPC and gRPC.
 func (s *Server) Run() error {
 	cfg := s.config.OpenAudio.Server
-	httpAddr := fmt.Sprintf("%s:%s", cfg.Hostname, cfg.Port)
-	httpsAddr := fmt.Sprintf("%s:%s", cfg.Hostname, cfg.HTTPSPort)
 
-	s.logger.Info("initializing server listeners",
-		zap.String("http_addr", httpAddr),
-		zap.String("https_addr", httpsAddr),
+	s.logger.Info("starting server listeners",
+		zap.String("http_addr", s.httpServer.Addr),
 		zap.Bool("tls_enabled", cfg.TLS.Enabled),
-		zap.Bool("self_signed", cfg.TLS.SelfSigned),
 		zap.Bool("h2c", cfg.H2C),
 	)
 
-	// always start HTTP (port 80)
-	eg := new(errgroup.Group)
+	eg, ctx := errgroup.WithContext(s.ctx)
+
+	// HTTP Server
+	s.httpServer.BaseContext = func(net.Listener) context.Context {
+		return ctx
+	}
 
 	eg.Go(func() error {
-		h2s := &http2.Server{}
-		server := &http.Server{
-			Addr:    httpAddr,
-			Handler: h2c.NewHandler(s.e, h2s),
-		}
-		s.logger.Info("HTTP listener started", zap.String("addr", httpAddr))
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		s.logger.Info("HTTP listener started", zap.String("addr", s.httpServer.Addr))
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			return fmt.Errorf("http server: %w", err)
 		}
 		return nil
 	})
 
-	// start HTTPS (port 443) if enabled
-	if cfg.TLS.Enabled {
-		if cfg.TLS.SelfSigned {
-			eg.Go(func() error {
-				s.logger.Info("HTTPS (self-signed) listener starting", zap.String("addr", httpsAddr))
-				return s.runSelfSignedTLS(httpsAddr)
-			})
-		} else {
-			eg.Go(func() error {
-				s.logger.Info("HTTPS (Let's Encrypt) listener starting", zap.String("addr", httpsAddr))
-				return s.runAutoTLS(httpsAddr)
-			})
+	eg.Go(func() error {
+		<-ctx.Done()
+		s.logger.Info("shutting down HTTP server")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown http server: %w", err)
 		}
+		return nil
+	})
+
+	// HTTPS Server (optional)
+	if s.httpsServer != nil {
+		s.httpsServer.BaseContext = func(net.Listener) context.Context {
+			return ctx
+		}
+
+		eg.Go(func() error {
+			s.logger.Info("HTTPS listener started", zap.String("addr", s.httpsServer.Addr))
+			if err := s.httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				return fmt.Errorf("https server: %w", err)
+			}
+			return nil
+		})
+
+		eg.Go(func() error {
+			<-ctx.Done()
+			s.logger.Info("shutting down HTTPS server")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := s.httpsServer.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("shutdown https server: %w", err)
+			}
+			return nil
+		})
 	}
 
-	return eg.Wait()
+	if err := eg.Wait(); err != nil {
+		return fmt.Errorf("server crashed: %w", err)
+	}
+
+	return nil
 }
 
-func (s *Server) runSelfSignedTLS(addr string) error {
+func (s *Server) setupSelfSignedTLS(addr string) (*http.Server, error) {
 	cfg := s.config.OpenAudio.Server
 	certDir := cfg.TLS.CertDir
 	if err := os.MkdirAll(certDir, 0755); err != nil {
-		return fmt.Errorf("create cert dir: %w", err)
+		return nil, fmt.Errorf("create cert dir: %w", err)
 	}
 
 	certFile := filepath.Join(certDir, "cert.pem")
@@ -179,19 +229,19 @@ func (s *Server) runSelfSignedTLS(addr string) error {
 		s.logger.Info("generating self-signed certs", zap.String("certDir", certDir))
 		certPEM, keyPEM, err := generateSelfSignedCert(cfg.Hostname)
 		if err != nil {
-			return fmt.Errorf("generate self-signed cert: %w", err)
+			return nil, fmt.Errorf("generate self-signed cert: %w", err)
 		}
 		if err := os.WriteFile(certFile, certPEM, 0644); err != nil {
-			return fmt.Errorf("write cert file: %w", err)
+			return nil, fmt.Errorf("write cert file: %w", err)
 		}
 		if err := os.WriteFile(keyFile, keyPEM, 0600); err != nil {
-			return fmt.Errorf("write key file: %w", err)
+			return nil, fmt.Errorf("write key file: %w", err)
 		}
 	}
 
 	tlsCert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return fmt.Errorf("load cert pair: %w", err)
+		return nil, fmt.Errorf("load cert pair: %w", err)
 	}
 
 	server := &http.Server{
@@ -203,14 +253,14 @@ func (s *Server) runSelfSignedTLS(addr string) error {
 		},
 		Handler: s.e,
 	}
-	return server.ListenAndServeTLS(certFile, keyFile)
+	return server, nil
 }
 
-func (s *Server) runAutoTLS(addr string) error {
+func (s *Server) setupAutoTLS(addr string) (*http.Server, error) {
 	cfg := s.config.OpenAudio.Server
 	cacheDir := cfg.TLS.CacheDir
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return fmt.Errorf("create cache dir: %w", err)
+		return nil, fmt.Errorf("create cache dir: %w", err)
 	}
 
 	// whitelist current host + IPs
@@ -242,7 +292,8 @@ func (s *Server) runAutoTLS(addr string) error {
 		TLSConfig: manager.TLSConfig(),
 		Handler:   s.e,
 	}
-	return server.ListenAndServeTLS("", "")
+
+	return server, nil
 }
 
 func generateSelfSignedCert(hostname string) ([]byte, []byte, error) {

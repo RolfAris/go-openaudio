@@ -13,6 +13,10 @@ var _ v1connect.CoreServiceHandler = (*CoreServer)(nil)
 type CoreServer struct {
 }
 
+func NewCoreServer() *CoreServer {
+	return &CoreServer{}
+}
+
 // ForwardTransaction implements v1connect.CoreServiceHandler.
 func (c *CoreServer) ForwardTransaction(context.Context, *connect.Request[v1.ForwardTransactionRequest]) (*connect.Response[v1.ForwardTransactionResponse], error) {
 	panic("unimplemented")
