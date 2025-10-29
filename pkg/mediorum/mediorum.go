@@ -30,7 +30,7 @@ var _ types.StorageService = (*Storage)(nil)
 type Storage struct {
 	logger *zap.Logger
 
-	core *types.CoreService
+	core types.CoreService
 }
 
 // GetUpload implements types.StorageService.
@@ -39,10 +39,15 @@ func (s *Storage) GetUpload(ctx context.Context) (string, error) {
 }
 
 func NewStorage(ctx context.Context, z *zap.Logger) *Storage {
-	l := z.With(zap.String("service", "core"))
+	l := z.With(zap.String("service", "storage"))
 	return &Storage{
 		logger: l,
 	}
+}
+
+// SetCore wires up the core service dependency
+func (s *Storage) SetCore(c types.CoreService) {
+	s.core = c
 }
 
 func Run(lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {

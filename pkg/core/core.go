@@ -25,7 +25,7 @@ var _ types.CoreService = (*Core)(nil)
 type Core struct {
 	logger *zap.Logger
 
-	storage *types.StorageService
+	storage types.StorageService
 }
 
 func NewCore(ctx context.Context, z *zap.Logger) *Core {
@@ -33,6 +33,11 @@ func NewCore(ctx context.Context, z *zap.Logger) *Core {
 	return &Core{
 		logger: l,
 	}
+}
+
+// SetStorage wires up the storage service dependency
+func (c *Core) SetStorage(s types.StorageService) {
+	c.storage = s
 }
 
 // GetBlock implements CoreService.

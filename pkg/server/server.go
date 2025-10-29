@@ -17,7 +17,11 @@ import (
 	"time"
 
 	"github.com/OpenAudio/go-openaudio/pkg/config"
+	coreServer "github.com/OpenAudio/go-openaudio/pkg/core/server"
+	"github.com/OpenAudio/go-openaudio/pkg/eth"
+	mediorumServer "github.com/OpenAudio/go-openaudio/pkg/mediorum/server"
 	servermw "github.com/OpenAudio/go-openaudio/pkg/server/middleware"
+	"github.com/OpenAudio/go-openaudio/pkg/system"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.akshayshah.org/connectproto"
@@ -49,26 +53,26 @@ type Server struct {
 	logger *zap.Logger
 	e      *echo.Echo
 
-	core    *CoreServer
-	storage *StorageServer
-	system  *SystemServer
-	eth     *EthServer
+	core    *coreServer.CoreService
+	storage *mediorumServer.StorageService
+	system  *system.SystemService
+	eth     *eth.EthService
 
 	httpServer  *http.Server
 	httpsServer *http.Server
 }
 
-func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger) *Server {
+func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger, core *coreServer.CoreService, storage *mediorumServer.StorageService, systemSvc *system.SystemService, ethSvc *eth.EthService) *Server {
 	return &Server{
 		ctx:    ctx,
 		config: config,
 		logger: logger,
 		e:      echo.New(),
 
-		core:    NewCoreServer(),
-		storage: NewStorageServer(),
-		system:  NewSystemServer(),
-		eth:     NewEthServer(),
+		core:    core,
+		storage: storage,
+		system:  systemSvc,
+		eth:     ethSvc,
 	}
 }
 

@@ -2,19 +2,27 @@ package server
 
 import (
 	"context"
+	"fmt"
 
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
+	"github.com/OpenAudio/go-openaudio/pkg/types"
 )
 
 var _ v1connect.CoreServiceHandler = (*CoreServer)(nil)
 
 type CoreServer struct {
+	core types.CoreService
 }
 
 func NewCoreServer() *CoreServer {
 	return &CoreServer{}
+}
+
+// SetCore wires up the actual core service implementation
+func (cs *CoreServer) SetCore(c types.CoreService) {
+	cs.core = c
 }
 
 // ForwardTransaction implements v1connect.CoreServiceHandler.
@@ -23,8 +31,19 @@ func (c *CoreServer) ForwardTransaction(context.Context, *connect.Request[v1.For
 }
 
 // GetBlock implements v1connect.CoreServiceHandler.
-func (c *CoreServer) GetBlock(context.Context, *connect.Request[v1.GetBlockRequest]) (*connect.Response[v1.GetBlockResponse], error) {
-	panic("unimplemented")
+func (cs *CoreServer) GetBlock(ctx context.Context, req *connect.Request[v1.GetBlockRequest]) (*connect.Response[v1.GetBlockResponse], error) {
+	if cs.core == nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("core service not initialized"))
+	}
+	
+	block, err := cs.core.GetBlock(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	
+	return connect.NewResponse(&v1.GetBlockResponse{
+		Block: block,
+	}), nil
 }
 
 // GetBlocks implements v1connect.CoreServiceHandler.
