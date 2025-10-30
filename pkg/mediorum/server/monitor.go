@@ -273,7 +273,7 @@ func getUploadsCount(ctx context.Context, db *gorm.DB) (count int64, errStr stri
 	return
 }
 
-func (ss *MediorumServer) serveStorageAndDbLogs(c echo.Context) error {
+func (ss *MediorumServer) ServeStorageAndDbLogs(c echo.Context) error {
 	limitStr := c.QueryParam("limit")
 	if limitStr == "" {
 		limitStr = "1000"

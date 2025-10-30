@@ -394,7 +394,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	return nil
 }
 
-func (ss *MediorumServer) serveRepairLog(c echo.Context) error {
+func (ss *MediorumServer) ServeRepairLog(c echo.Context) error {
 	limitStr := c.QueryParam("limit")
 	if limitStr == "" {
 		limitStr = "1000"

@@ -25,7 +25,7 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-func (ss *MediorumServer) serveBlobLocation(c echo.Context) error {
+func (ss *MediorumServer) ServeBlobLocation(c echo.Context) error {
 	ctx := c.Request().Context()
 	cid := c.Param("cid")
 	preferred, _ := ss.rendezvousAllHosts(cid)
@@ -45,7 +45,7 @@ func (ss *MediorumServer) serveBlobLocation(c echo.Context) error {
 	})
 }
 
-func (ss *MediorumServer) serveBlobInfo(c echo.Context) error {
+func (ss *MediorumServer) ServeBlobInfo(c echo.Context) error {
 	ctx := c.Request().Context()
 	cid := c.Param("cid")
 	key := cidutil.ShardCID(cid)
@@ -67,7 +67,7 @@ func (ss *MediorumServer) serveBlobInfo(c echo.Context) error {
 	return c.JSON(200, attr)
 }
 
-func (ss *MediorumServer) ensureNotDelisted(next echo.HandlerFunc) echo.HandlerFunc {
+func (ss *MediorumServer) EnsureNotDelisted(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx := c.Request().Context()
 		key := c.Param("cid")
@@ -82,7 +82,7 @@ func (ss *MediorumServer) ensureNotDelisted(next echo.HandlerFunc) echo.HandlerF
 	}
 }
 
-func (ss *MediorumServer) serveBlob(c echo.Context) error {
+func (ss *MediorumServer) ServeBlob(c echo.Context) error {
 	ctx := c.Request().Context()
 	cid := c.Param("cid")
 
@@ -349,7 +349,7 @@ func (ss *MediorumServer) logTrackListen(c echo.Context) {
 // checks signature from discovery node
 // used for cidstream endpoint + gated content and audio analysis post endpoints
 // based on: https://github.com/AudiusProject/apps/blob/main/creator-node/src/middlewares/contentAccess/contentAccessMiddleware.ts
-func (s *MediorumServer) requireRegisteredSignature(next echo.HandlerFunc) echo.HandlerFunc {
+func (s *MediorumServer) RequireRegisteredSignature(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		cid := c.Param("cid")
 		uploadID := c.Param("id")
@@ -417,7 +417,7 @@ func (s *MediorumServer) requireRegisteredSignature(next echo.HandlerFunc) echo.
 	}
 }
 
-func (ss *MediorumServer) serveInternalBlobGET(c echo.Context) error {
+func (ss *MediorumServer) ServeInternalBlobGET(c echo.Context) error {
 	ctx := c.Request().Context()
 	cid := c.Param("cid")
 	key := cidutil.ShardCID(cid)
@@ -431,7 +431,7 @@ func (ss *MediorumServer) serveInternalBlobGET(c echo.Context) error {
 	return c.Stream(200, blob.ContentType(), blob)
 }
 
-func (ss *MediorumServer) serveInternalBlobPOST(c echo.Context) error {
+func (ss *MediorumServer) ServeInternalBlobPOST(c echo.Context) error {
 	if !ss.diskHasSpace() {
 		return c.String(http.StatusServiceUnavailable, "disk is too full to accept new blobs")
 	}
@@ -471,7 +471,7 @@ func (ss *MediorumServer) serveInternalBlobPOST(c echo.Context) error {
 	return c.JSON(200, "ok")
 }
 
-func (ss *MediorumServer) serveLegacyBlobAnalysis(c echo.Context) error {
+func (ss *MediorumServer) ServeLegacyBlobAnalysis(c echo.Context) error {
 	cid := c.Param("cid")
 	var analysis *QmAudioAnalysis
 	err := ss.crud.DB.First(&analysis, "cid = ?", cid).Error
@@ -481,7 +481,7 @@ func (ss *MediorumServer) serveLegacyBlobAnalysis(c echo.Context) error {
 	return c.JSON(200, analysis)
 }
 
-func (ss *MediorumServer) serveTrack(c echo.Context) error {
+func (ss *MediorumServer) ServeTrack(c echo.Context) error {
 	if ss.Config.Env != "dev" {
 		return c.String(404, "not found")
 	}

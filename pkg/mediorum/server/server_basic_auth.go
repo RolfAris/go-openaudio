@@ -25,7 +25,7 @@ func recoverSigner(input string, signature []byte) (common.Address, error) {
 	return sigverify.EcRecoverEx(hash.Bytes(), signature)
 }
 
-func (ss *MediorumServer) checkBasicAuth(user, pass string, c echo.Context) (bool, error) {
+func (ss *MediorumServer) CheckBasicAuth(user, pass string, c echo.Context) (bool, error) {
 	// for dev:
 	if ss.Config.privateKey == nil {
 		return true, nil
@@ -61,7 +61,7 @@ func (ss *MediorumServer) checkBasicAuth(user, pass string, c echo.Context) (boo
 
 }
 
-func (ss *MediorumServer) requireUserSignature(next echo.HandlerFunc) echo.HandlerFunc {
+func (ss *MediorumServer) RequireUserSignature(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// id is the upload ID
 		id := c.Param("id")
@@ -98,7 +98,7 @@ func (ss *MediorumServer) requireUserSignature(next echo.HandlerFunc) echo.Handl
 	}
 }
 
-func (ss *MediorumServer) requireBodySignedByOwner(next echo.HandlerFunc) echo.HandlerFunc {
+func (ss *MediorumServer) RequireBodySignedByOwner(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		sig, err := signature.ParseFromQueryString(c.QueryParam("signature"))
 		if err != nil {

@@ -178,7 +178,7 @@ func (ss *MediorumServer) findHealthyPeers(aliveInLast time.Duration) []string {
 	return result
 }
 
-func (ss *MediorumServer) proxyHealthCheck(c echo.Context) error {
+func (ss *MediorumServer) ProxyHealthCheck(c echo.Context) error {
 	peerHost := c.QueryParam("to")
 	req, err := http.NewRequest("GET", apiPath(peerHost, "/health_check"), nil)
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 	"gocloud.dev/blob"
 )
 
-func (ss *MediorumServer) serveImage(c echo.Context) error {
+func (ss *MediorumServer) ServeImage(c echo.Context) error {
 	// images are small enough to always serve all at once (no 206 range responses)
 	c.Request().Header.Del("Range")
 

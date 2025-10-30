@@ -12,13 +12,17 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/OpenAudio/go-openaudio/pkg/config"
+	"github.com/OpenAudio/go-openaudio/pkg/core/console/views/sandbox"
 	coreServer "github.com/OpenAudio/go-openaudio/pkg/core/server"
 	"github.com/OpenAudio/go-openaudio/pkg/eth"
+	"github.com/OpenAudio/go-openaudio/pkg/mediorum/cidutil"
 	mediorumServer "github.com/OpenAudio/go-openaudio/pkg/mediorum/server"
 	servermw "github.com/OpenAudio/go-openaudio/pkg/server/middleware"
 	"github.com/OpenAudio/go-openaudio/pkg/system"
@@ -33,6 +37,8 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"connectrpc.com/connect"
+	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	corev1connect "github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
 	ethv1connect "github.com/OpenAudio/go-openaudio/pkg/api/eth/v1/v1connect"
 	storagev1connect "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1/v1connect"
@@ -123,16 +129,139 @@ func (s *Server) Init() error {
 
 	// Register core business routes (if available)
 	if s.coreServer != nil {
-		if err := s.coreServer.RegisterRoutes(e); err != nil {
-			return fmt.Errorf("failed to register core routes: %w", err)
+		s.logger.Info("registering core HTTP routes")
+		coreGroup := e.Group("/core")
+
+		// Core REST API routes
+		coreGroup.GET("/rewards", s.coreServer.GetRewards)
+		coreGroup.GET("/rewards/attestation", s.coreServer.GetRewardAttestation)
+		coreGroup.GET("/nodes", s.coreServer.GetRegisteredNodes)
+		coreGroup.GET("/nodes/verbose", s.coreServer.GetRegisteredNodes)
+		coreGroup.GET("/nodes/discovery", s.coreServer.GetRegisteredNodes)
+		coreGroup.GET("/nodes/discovery/verbose", s.coreServer.GetRegisteredNodes)
+		coreGroup.GET("/nodes/content", s.coreServer.GetRegisteredNodes)
+		coreGroup.GET("/nodes/content/verbose", s.coreServer.GetRegisteredNodes)
+		coreGroup.GET("/status", func(c echo.Context) error {
+			if s.coreServer == nil {
+				return c.String(http.StatusServiceUnavailable, "starting up")
+			}
+			res, err := s.core.GetStatus(c.Request().Context(), &connect.Request[v1.GetStatusRequest]{})
+			if err != nil {
+				return err
+			}
+			return c.JSON(http.StatusOK, res.Msg)
+		})
+
+		coreGroup.Any("/crpc*", s.coreServer.ProxyCometRequest)
+
+		// Register Eth RPC routes
+		if err := s.coreServer.RegisterEthRPC(e); err != nil {
+			return fmt.Errorf("failed to register eth rpc: %w", err)
 		}
+
+		coreGroup.GET("/sdk", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sandbox.ServeSandbox(s.coreServer.GetConfig(), w, r)
+		})))
 	}
 
 	// Register mediorum business routes (if available)
 	if s.mediorumServer != nil {
-		if err := s.mediorumServer.RegisterRoutes(e); err != nil {
-			return fmt.Errorf("failed to register mediorum routes: %w", err)
+		s.logger.Info("registering mediorum HTTP routes")
+		routes := e.Group("")
+
+		routes.GET("", func(c echo.Context) error {
+			return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+s.mediorumServer.Config.Self.Host)
+		})
+		routes.GET("/", func(c echo.Context) error {
+			return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+s.mediorumServer.Config.Self.Host)
+		})
+
+		// public: uploads
+		routes.GET("/uploads", s.mediorumServer.ServeUploadList)
+		routes.GET("/uploads/:id", s.mediorumServer.ServeUploadDetail, s.mediorumServer.RequireHealthy)
+		routes.POST("/uploads/:id", s.mediorumServer.UpdateUpload, s.mediorumServer.RequireHealthy, s.mediorumServer.RequireUserSignature)
+		routes.POST("/uploads", s.mediorumServer.PostUpload, s.mediorumServer.RequireHealthy)
+		// workaround because reverse proxy catches the browser's preflight OPTIONS request instead of letting our CORS middleware handle it
+		routes.OPTIONS("/uploads", func(c echo.Context) error {
+			return c.NoContent(http.StatusNoContent)
+		})
+
+		routes.POST("/generate_preview/:cid/:previewStartSeconds", s.mediorumServer.GeneratePreview, s.mediorumServer.RequireHealthy)
+
+		// legacy blob audio analysis
+		routes.GET("/tracks/legacy/:cid/analysis", s.mediorumServer.ServeLegacyBlobAnalysis, s.mediorumServer.RequireHealthy)
+
+		// serve blob (audio)
+		routes.HEAD("/ipfs/:cid", s.mediorumServer.ServeBlob, s.mediorumServer.RequireHealthy, s.mediorumServer.EnsureNotDelisted)
+		routes.GET("/ipfs/:cid", s.mediorumServer.ServeBlob, s.mediorumServer.RequireHealthy, s.mediorumServer.EnsureNotDelisted)
+		routes.HEAD("/content/:cid", s.mediorumServer.ServeBlob, s.mediorumServer.RequireHealthy, s.mediorumServer.EnsureNotDelisted)
+		routes.GET("/content/:cid", s.mediorumServer.ServeBlob, s.mediorumServer.RequireHealthy, s.mediorumServer.EnsureNotDelisted)
+		routes.HEAD("/tracks/cidstream/:cid", s.mediorumServer.ServeBlob, s.mediorumServer.RequireHealthy, s.mediorumServer.EnsureNotDelisted, s.mediorumServer.RequireRegisteredSignature)
+		routes.GET("/tracks/cidstream/:cid", s.mediorumServer.ServeBlob, s.mediorumServer.RequireHealthy, s.mediorumServer.EnsureNotDelisted, s.mediorumServer.RequireRegisteredSignature)
+		routes.GET("/tracks/stream/:trackId", s.mediorumServer.ServeTrack)
+
+		// serve image
+		routes.HEAD("/ipfs/:jobID/:variant", s.mediorumServer.ServeImage, s.mediorumServer.RequireHealthy)
+		routes.GET("/ipfs/:jobID/:variant", s.mediorumServer.ServeImage, s.mediorumServer.RequireHealthy)
+		routes.HEAD("/content/:jobID/:variant", s.mediorumServer.ServeImage, s.mediorumServer.RequireHealthy)
+		routes.GET("/content/:jobID/:variant", s.mediorumServer.ServeImage, s.mediorumServer.RequireHealthy)
+
+		routes.GET("/contact", s.mediorumServer.ServeContact)
+		routes.GET("/health_check", s.mediorumServer.ServeHealthCheck)
+		routes.HEAD("/health_check", s.mediorumServer.ServeHealthCheck)
+		routes.GET("/ip_check", func(c echo.Context) error {
+			return c.JSON(http.StatusOK, map[string]string{
+				"data": c.RealIP(), // client/requestor IP
+			})
+		})
+
+		routes.GET("/delist_status/track/:trackCid", s.mediorumServer.ServeTrackDelistStatus)
+		routes.GET("/delist_status/user/:userId", s.mediorumServer.ServeUserDelistStatus)
+		routes.POST("/delist_status/insert", s.mediorumServer.ServeInsertDelistStatus, s.mediorumServer.RequireBodySignedByOwner)
+
+		// -------------------
+		// reverse proxy /d and /d_api to uptime container
+		uptimeUrl, err := url.Parse("http://uptime:1996")
+		if err != nil {
+			return fmt.Errorf("invalid uptime URL: %v", err)
 		}
+		uptimeProxy := httputil.NewSingleHostReverseProxy(uptimeUrl)
+
+		uptimeAPI := routes.Group("/d_api")
+		// fixes what I think should be considered an echo bug: https://github.com/labstack/echo/issues/1419
+		uptimeAPI.Use(mediorumServer.ACAOHeaderOverwriteMiddleware)
+		uptimeAPI.Any("/*", echo.WrapHandler(uptimeProxy))
+
+		uptimeUI := routes.Group("/d")
+		uptimeUI.Any("*", echo.WrapHandler(uptimeProxy))
+
+		// -------------------
+		// internal
+		internalApi := routes.Group("/internal")
+
+		// internal: crud
+		internalApi.GET("/crud/sweep", s.mediorumServer.ServeCrudSweep)
+		internalApi.POST("/crud/push", s.mediorumServer.ServeCrudPush, middleware.BasicAuth(s.mediorumServer.CheckBasicAuth))
+
+		internalApi.GET("/blobs/location/:cid", s.mediorumServer.ServeBlobLocation, cidutil.UnescapeCidParam)
+		internalApi.GET("/blobs/info/:cid", s.mediorumServer.ServeBlobInfo, cidutil.UnescapeCidParam)
+
+		// internal: blobs between peers
+		internalApi.GET("/blobs/:cid", s.mediorumServer.ServeInternalBlobGET, cidutil.UnescapeCidParam, middleware.BasicAuth(s.mediorumServer.CheckBasicAuth))
+		internalApi.POST("/blobs", s.mediorumServer.ServeInternalBlobPOST, middleware.BasicAuth(s.mediorumServer.CheckBasicAuth))
+		internalApi.GET("/qm.csv", s.mediorumServer.ServeInternalQmCsv)
+
+		// WIP internal: metrics
+		internalApi.GET("/metrics", s.mediorumServer.GetMetrics)
+		internalApi.GET("/metrics/blobs-served/:timeRange", s.mediorumServer.GetBlobsServedMetrics)
+		internalApi.GET("/logs/partition-ops", s.mediorumServer.GetPartitionOpsLog)
+		internalApi.GET("/logs/reaper", s.mediorumServer.GetReaperLog)
+		internalApi.GET("/logs/repair", s.mediorumServer.ServeRepairLog)
+		internalApi.GET("/logs/storageAndDb", s.mediorumServer.ServeStorageAndDbLogs)
+		internalApi.GET("/logs/pg-upgrade", s.mediorumServer.GetPgUpgradeLog)
+
+		// internal: testing
+		internalApi.GET("/proxy_health_check", s.mediorumServer.ProxyHealthCheck)
 	}
 
 	// REST Routes (legacy/stubs)

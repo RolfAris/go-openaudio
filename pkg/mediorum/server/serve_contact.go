@@ -10,7 +10,7 @@ type ContactResponse struct {
 	Email string `json:"email"`
 }
 
-func (ss *MediorumServer) serveContact(c echo.Context) error {
+func (ss *MediorumServer) ServeContact(c echo.Context) error {
 	if ss.trustedNotifier != nil {
 		return c.JSON(200, ContactResponse{Email: ss.trustedNotifier.Email})
 	}

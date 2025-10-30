@@ -160,6 +160,10 @@ func (s *Server) setSelf(self corev1connect.CoreServiceClient) {
 	s.self = self
 }
 
+func (s *Server) GetConfig() *config.Config {
+	return s.config
+}
+
 func (s *Server) syncLogs(ctx context.Context) error {
 	s.StartProcess(ProcessStateLogSync)
 

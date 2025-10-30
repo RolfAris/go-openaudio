@@ -51,7 +51,7 @@ type RegisteredNodesEndpointResponse struct {
 	RegisteredNodes []string `json:"data"`
 }
 
-func (s *Server) getRegisteredNodes(c echo.Context) error {
+func (s *Server) GetRegisteredNodes(c echo.Context) error {
 	ctx := c.Request().Context()
 	queries := s.db
 

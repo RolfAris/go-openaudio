@@ -17,7 +17,7 @@ import (
 
 const PullLimit = 10000
 
-func (ss *MediorumServer) serveCrudSweep(c echo.Context) error {
+func (ss *MediorumServer) ServeCrudSweep(c echo.Context) error {
 	ss.crudSweepMutex.Lock()
 	defer ss.crudSweepMutex.Unlock()
 
@@ -56,7 +56,7 @@ func (ss *MediorumServer) serveCrudSweep(c echo.Context) error {
 	return c.JSON(200, filteredOps)
 }
 
-func (ss *MediorumServer) serveCrudPush(c echo.Context) error {
+func (ss *MediorumServer) ServeCrudPush(c echo.Context) error {
 	op := new(crudr.Op)
 	if err := c.Bind(op); err != nil {
 		return c.String(http.StatusBadRequest, err.Error())

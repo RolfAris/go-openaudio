@@ -11,6 +11,7 @@ rpc_url = "{{ .OpenAudio.Eth.RpcURL }}"
 registry_address = "{{ .OpenAudio.Eth.RegistryAddress }}"
 
 [openaudio.db]
+# the embedded postgres store 
 postgres_dsn = "{{ .OpenAudio.DB.PostgresDSN }}"
 
 [openaudio.blob]

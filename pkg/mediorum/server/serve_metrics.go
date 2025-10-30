@@ -36,7 +36,7 @@ var (
 	validBlobMetricActions = []string{StreamTrack, ServeImage, "all"}
 )
 
-func (ss *MediorumServer) getMetrics(c echo.Context) error {
+func (ss *MediorumServer) GetMetrics(c echo.Context) error {
 	m := Metrics{}
 	m.Host = ss.Config.Self.Host
 	m.Uploads = ss.uploadsCount
@@ -46,7 +46,7 @@ func (ss *MediorumServer) getMetrics(c echo.Context) error {
 	return c.JSON(200, m)
 }
 
-func (ss *MediorumServer) getBlobsServedMetrics(c echo.Context) error {
+func (ss *MediorumServer) GetBlobsServedMetrics(c echo.Context) error {
 	timeRange := c.Param("timeRange")
 	if timeRange == "" || len(validBucketSizes[timeRange]) == 0 {
 		return c.String(400, fmt.Sprintf("Error: bad path param %s", timeRange))
@@ -188,14 +188,14 @@ func (ss *MediorumServer) getLogfile(c echo.Context, fileName string) error {
 	return c.JSON(200, strings.Split(string(data), "\n"))
 }
 
-func (ss *MediorumServer) getPartitionOpsLog(c echo.Context) error {
+func (ss *MediorumServer) GetPartitionOpsLog(c echo.Context) error {
 	return ss.getLogfile(c, "partition_ops.txt")
 }
 
-func (ss *MediorumServer) getReaperLog(c echo.Context) error {
+func (ss *MediorumServer) GetReaperLog(c echo.Context) error {
 	return ss.getLogfile(c, "reaper.txt")
 }
 
-func (ss *MediorumServer) getPgUpgradeLog(c echo.Context) error {
+func (ss *MediorumServer) GetPgUpgradeLog(c echo.Context) error {
 	return ss.getLogfile(c, "pg_upgrade.txt")
 }

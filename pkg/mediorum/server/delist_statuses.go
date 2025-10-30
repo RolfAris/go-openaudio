@@ -67,7 +67,7 @@ func (ds *DelistStatus) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (ss *MediorumServer) serveTrackDelistStatus(c echo.Context) error {
+func (ss *MediorumServer) ServeTrackDelistStatus(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	sql := `SELECT *
@@ -93,7 +93,7 @@ func (ss *MediorumServer) serveTrackDelistStatus(c echo.Context) error {
 	return c.JSON(200, map[string]interface{}{"createdAt": createdAt, "delisted": delisted, "reason": reason, "trackId": trackId, "ownerId": ownerId, "trackCid": trackCid})
 }
 
-func (ss *MediorumServer) serveUserDelistStatus(c echo.Context) error {
+func (ss *MediorumServer) ServeUserDelistStatus(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	sql := `SELECT *
@@ -118,7 +118,7 @@ func (ss *MediorumServer) serveUserDelistStatus(c echo.Context) error {
 	return c.JSON(200, map[string]interface{}{"createdAt": createdAt, "delisted": delisted, "reason": reason, "userId": userId})
 }
 
-func (ss *MediorumServer) serveInsertDelistStatus(c echo.Context) error {
+func (ss *MediorumServer) ServeInsertDelistStatus(c echo.Context) error {
 	ctx := c.Request().Context()
 	var ds DelistStatus
 

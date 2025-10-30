@@ -29,7 +29,7 @@ var (
 	filesFormFieldName = "files"
 )
 
-func (ss *MediorumServer) serveUploadDetail(c echo.Context) error {
+func (ss *MediorumServer) ServeUploadDetail(c echo.Context) error {
 	var upload *Upload
 	err := ss.crud.DB.First(&upload, "id = ?", c.Param("id")).Error
 	if err != nil {
@@ -56,7 +56,7 @@ func (ss *MediorumServer) serveUploadDetail(c echo.Context) error {
 	return c.JSON(200, upload)
 }
 
-func (ss *MediorumServer) serveUploadList(c echo.Context) error {
+func (ss *MediorumServer) ServeUploadList(c echo.Context) error {
 	afterCursor, _ := time.Parse(time.RFC3339Nano, c.QueryParam("after"))
 	var uploads []Upload
 	err := ss.crud.DB.
@@ -75,7 +75,7 @@ type UpdateUploadBody struct {
 // generatePreview endpoint will create a new 30s preview mp3
 // save the cid to the audio_previews table
 // and return to the client.
-func (ss *MediorumServer) generatePreview(c echo.Context) error {
+func (ss *MediorumServer) GeneratePreview(c echo.Context) error {
 	ctx := c.Request().Context()
 	fileHash := c.Param("cid")
 	previewStartSeconds := c.Param("previewStartSeconds")
@@ -91,7 +91,7 @@ func (ss *MediorumServer) generatePreview(c echo.Context) error {
 // this endpoint should be replaced by generate_preview
 // when client is fully using generate_preview
 // this can be removed.
-func (ss *MediorumServer) updateUpload(c echo.Context) error {
+func (ss *MediorumServer) UpdateUpload(c echo.Context) error {
 	if !ss.diskHasSpace() {
 		return c.String(http.StatusServiceUnavailable, "disk is too full to accept new uploads")
 	}
@@ -145,7 +145,7 @@ func (ss *MediorumServer) updateUpload(c echo.Context) error {
 	return c.JSON(200, upload)
 }
 
-func (ss *MediorumServer) postUpload(c echo.Context) error {
+func (ss *MediorumServer) PostUpload(c echo.Context) error {
 	ctx := c.Request().Context()
 	if !ss.diskHasSpace() {
 		ss.logger.Warn("disk is too full to accept new uploads")

@@ -27,7 +27,7 @@ type Web3API struct {
 	vars   *config.SandboxVars
 }
 
-func (s *Server) registerEthRPC(e *echo.Echo) error {
+func (s *Server) RegisterEthRPC(e *echo.Echo) error {
 	ethRpc := rpc.NewServer()
 
 	// Register the "eth" namespace

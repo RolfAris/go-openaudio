@@ -50,7 +50,7 @@ func (ss *MediorumServer) writeQmFile() error {
 	return bail(blobWriter.Close())
 }
 
-func (ss *MediorumServer) serveInternalQmCsv(c echo.Context) error {
+func (ss *MediorumServer) ServeInternalQmCsv(c echo.Context) error {
 	r, err := ss.bucket.NewReader(c.Request().Context(), _qmFileKey, nil)
 	if err != nil {
 		return err

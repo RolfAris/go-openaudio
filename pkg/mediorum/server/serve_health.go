@@ -66,7 +66,7 @@ type HealthCheckResponseData struct {
 	TranscodeStats            *TranscodeStats            `json:"transcodeStats"`
 }
 
-func (ss *MediorumServer) serveHealthCheck(c echo.Context) error {
+func (ss *MediorumServer) ServeHealthCheck(c echo.Context) error {
 	healthy := ss.databaseSize > 0 && ss.dbSizeErr == "" && ss.uploadsCountErr == ""
 
 	allowUnregistered, _ := strconv.ParseBool(c.QueryParam("allow_unregistered"))
@@ -175,7 +175,7 @@ func isDbLocalhost(postgresDSN string) bool {
 	}
 }
 
-func (ss *MediorumServer) requireHealthy(next echo.HandlerFunc) echo.HandlerFunc {
+func (ss *MediorumServer) RequireHealthy(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		allowUnhealthy, _ := strconv.ParseBool(c.QueryParam("allow_unhealthy"))
 		if allowUnhealthy {

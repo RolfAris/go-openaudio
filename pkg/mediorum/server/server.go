@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 	"strconv"
@@ -22,7 +21,6 @@ import (
 	coreServer "github.com/OpenAudio/go-openaudio/pkg/core/server"
 	audiusHttputil "github.com/OpenAudio/go-openaudio/pkg/httputil"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
-	"github.com/OpenAudio/go-openaudio/pkg/mediorum/cidutil"
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/crudr"
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/ethcontracts"
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/persistence"
@@ -33,7 +31,6 @@ import (
 	"github.com/imroc/req/v3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/oschwald/maxminddb-golang"
 	"go.uber.org/zap"
 	"gocloud.dev/blob"
@@ -321,109 +318,6 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 
 	return ss, nil
 
-}
-
-// RegisterRoutes registers all mediorum HTTP routes on the provided echo instance
-func (ss *MediorumServer) RegisterRoutes(e *echo.Echo) error {
-	ss.logger.Info("registering mediorum HTTP routes")
-
-	routes := e.Group(apiBasePath)
-
-	routes.GET("", func(c echo.Context) error {
-		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+ss.Config.Self.Host)
-	})
-	routes.GET("/", func(c echo.Context) error {
-		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+ss.Config.Self.Host)
-	})
-
-	// public: uploads
-	routes.GET("/uploads", ss.serveUploadList)
-	routes.GET("/uploads/:id", ss.serveUploadDetail, ss.requireHealthy)
-	routes.POST("/uploads/:id", ss.updateUpload, ss.requireHealthy, ss.requireUserSignature)
-	routes.POST("/uploads", ss.postUpload, ss.requireHealthy)
-	// workaround because reverse proxy catches the browser's preflight OPTIONS request instead of letting our CORS middleware handle it
-	routes.OPTIONS("/uploads", func(c echo.Context) error {
-		return c.NoContent(http.StatusNoContent)
-	})
-
-	routes.POST("/generate_preview/:cid/:previewStartSeconds", ss.generatePreview, ss.requireHealthy)
-
-	// legacy blob audio analysis
-	routes.GET("/tracks/legacy/:cid/analysis", ss.serveLegacyBlobAnalysis, ss.requireHealthy)
-
-	// serve blob (audio)
-	routes.HEAD("/ipfs/:cid", ss.serveBlob, ss.requireHealthy, ss.ensureNotDelisted)
-	routes.GET("/ipfs/:cid", ss.serveBlob, ss.requireHealthy, ss.ensureNotDelisted)
-	routes.HEAD("/content/:cid", ss.serveBlob, ss.requireHealthy, ss.ensureNotDelisted)
-	routes.GET("/content/:cid", ss.serveBlob, ss.requireHealthy, ss.ensureNotDelisted)
-	routes.HEAD("/tracks/cidstream/:cid", ss.serveBlob, ss.requireHealthy, ss.ensureNotDelisted, ss.requireRegisteredSignature)
-	routes.GET("/tracks/cidstream/:cid", ss.serveBlob, ss.requireHealthy, ss.ensureNotDelisted, ss.requireRegisteredSignature)
-	routes.GET("/tracks/stream/:trackId", ss.serveTrack)
-
-	// serve image
-	routes.HEAD("/ipfs/:jobID/:variant", ss.serveImage, ss.requireHealthy)
-	routes.GET("/ipfs/:jobID/:variant", ss.serveImage, ss.requireHealthy)
-	routes.HEAD("/content/:jobID/:variant", ss.serveImage, ss.requireHealthy)
-	routes.GET("/content/:jobID/:variant", ss.serveImage, ss.requireHealthy)
-
-	routes.GET("/contact", ss.serveContact)
-	routes.GET("/health_check", ss.serveHealthCheck)
-	routes.HEAD("/health_check", ss.serveHealthCheck)
-	routes.GET("/ip_check", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"data": c.RealIP(), // client/requestor IP
-		})
-	})
-
-	routes.GET("/delist_status/track/:trackCid", ss.serveTrackDelistStatus)
-	routes.GET("/delist_status/user/:userId", ss.serveUserDelistStatus)
-	routes.POST("/delist_status/insert", ss.serveInsertDelistStatus, ss.requireBodySignedByOwner)
-
-	// -------------------
-	// reverse proxy /d and /d_api to uptime container
-	uptimeUrl, err := url.Parse("http://uptime:1996")
-	if err != nil {
-		return fmt.Errorf("Invalid uptime URL: %v", err)
-	}
-	uptimeProxy := httputil.NewSingleHostReverseProxy(uptimeUrl)
-
-	uptimeAPI := routes.Group("/d_api")
-	// fixes what I think should be considered an echo bug: https://github.com/labstack/echo/issues/1419
-	uptimeAPI.Use(ACAOHeaderOverwriteMiddleware)
-	uptimeAPI.Any("/*", echo.WrapHandler(uptimeProxy))
-
-	uptimeUI := routes.Group("/d")
-	uptimeUI.Any("*", echo.WrapHandler(uptimeProxy))
-
-	// -------------------
-	// internal
-	internalApi := routes.Group("/internal")
-
-	// internal: crud
-	internalApi.GET("/crud/sweep", ss.serveCrudSweep)
-	internalApi.POST("/crud/push", ss.serveCrudPush, middleware.BasicAuth(ss.checkBasicAuth))
-
-	internalApi.GET("/blobs/location/:cid", ss.serveBlobLocation, cidutil.UnescapeCidParam)
-	internalApi.GET("/blobs/info/:cid", ss.serveBlobInfo, cidutil.UnescapeCidParam)
-
-	// internal: blobs between peers
-	internalApi.GET("/blobs/:cid", ss.serveInternalBlobGET, cidutil.UnescapeCidParam, middleware.BasicAuth(ss.checkBasicAuth))
-	internalApi.POST("/blobs", ss.serveInternalBlobPOST, middleware.BasicAuth(ss.checkBasicAuth))
-	internalApi.GET("/qm.csv", ss.serveInternalQmCsv)
-
-	// WIP internal: metrics
-	internalApi.GET("/metrics", ss.getMetrics)
-	internalApi.GET("/metrics/blobs-served/:timeRange", ss.getBlobsServedMetrics)
-	internalApi.GET("/logs/partition-ops", ss.getPartitionOpsLog)
-	internalApi.GET("/logs/reaper", ss.getReaperLog)
-	internalApi.GET("/logs/repair", ss.serveRepairLog)
-	internalApi.GET("/logs/storageAndDb", ss.serveStorageAndDbLogs)
-	internalApi.GET("/logs/pg-upgrade", ss.getPgUpgradeLog)
-
-	// internal: testing
-	internalApi.GET("/proxy_health_check", ss.proxyHealthCheck)
-
-	return nil
 }
 
 func setResponseACAOHeaderFromRequest(req http.Request, resp echo.Response) {

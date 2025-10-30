@@ -31,7 +31,7 @@ var allowedMethods = map[string]struct{}{
 // maxRequestBodySize limits request size to 64KB - RPC requests should be tiny
 const maxRequestBodySize = 64 * 1024
 
-func (s *Server) proxyCometRequest(c echo.Context) error {
+func (s *Server) ProxyCometRequest(c echo.Context) error {
 	if !s.config.StateSync.ServeSnapshots {
 		return respondWithError(c, http.StatusForbidden, "state sync not enabled")
 	}
