@@ -77,7 +77,6 @@ type MediorumConfig struct {
 
 type MediorumServer struct {
 	lc               *lifecycle.Lifecycle
-	echo             *echo.Echo
 	bucket           *blob.Bucket
 	logger           *zap.Logger
 	crud             *crudr.Crudr
@@ -288,19 +287,8 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 		logger.Warn("trusted notifier id not set, not polling delist statuses or serving /contact route")
 	}
 
-	// echoServer server
-	echoServer := echo.New()
-	echoServer.HideBanner = true
-	echoServer.Debug = true
-
-	echoServer.Use(middleware.Recover())
-	echoServer.Use(middleware.Logger())
-	echoServer.Use(middleware.CORS())
-	echoServer.Use(timingMiddleware)
-
 	ss := &MediorumServer{
 		lc:               mediorumLifecycle,
-		echo:             echoServer,
 		bucket:           bucket,
 		crud:             crud,
 		pgPool:           pgPool,
@@ -329,13 +317,23 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 		playEventQueue: NewPlayEventQueue(),
 	}
 
-	routes := echoServer.Group(apiBasePath)
+	go ss.loadGeoIPDatabase()
+
+	return ss, nil
+
+}
+
+// RegisterRoutes registers all mediorum HTTP routes on the provided echo instance
+func (ss *MediorumServer) RegisterRoutes(e *echo.Echo) error {
+	ss.logger.Info("registering mediorum HTTP routes")
+
+	routes := e.Group(apiBasePath)
 
 	routes.GET("", func(c echo.Context) error {
-		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+config.Self.Host)
+		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+ss.Config.Self.Host)
 	})
 	routes.GET("/", func(c echo.Context) error {
-		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+config.Self.Host)
+		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+ss.Config.Self.Host)
 	})
 
 	// public: uploads
@@ -385,7 +383,7 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 	// reverse proxy /d and /d_api to uptime container
 	uptimeUrl, err := url.Parse("http://uptime:1996")
 	if err != nil {
-		return nil, fmt.Errorf("Invalid uptime URL: %v", err)
+		return fmt.Errorf("Invalid uptime URL: %v", err)
 	}
 	uptimeProxy := httputil.NewSingleHostReverseProxy(uptimeUrl)
 
@@ -425,10 +423,7 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 	// internal: testing
 	internalApi.GET("/proxy_health_check", ss.proxyHealthCheck)
 
-	go ss.loadGeoIPDatabase()
-
-	return ss, nil
-
+	return nil
 }
 
 func setResponseACAOHeaderFromRequest(req http.Request, resp echo.Response) {
@@ -470,7 +465,6 @@ func setTimingHeader(c echo.Context) {
 
 func (ss *MediorumServer) MustStart() error {
 	ss.lc.AddManagedRoutine("pprof server", ss.startPprofServer)
-	ss.lc.AddManagedRoutine("echo server", ss.startEchoServer)
 	ss.lc.AddManagedRoutine("transcoder", ss.startTranscoder)
 	ss.lc.AddManagedRoutine("audio analyzer", ss.startAudioAnalyzer)
 
@@ -578,33 +572,6 @@ func (ss *MediorumServer) pollForSeedingCompletion(ctx context.Context) error {
 // discovery listens are enabled if endpoints are provided
 func (mc *MediorumConfig) discoveryListensEnabled() bool {
 	return len(mc.DiscoveryListensEndpoints) > 0
-}
-
-func (ss *MediorumServer) startEchoServer(ctx context.Context) error {
-	done := make(chan error, 1)
-	go func() {
-		err := ss.echo.Start(":" + ss.Config.ListenPort)
-		if err != nil && err != http.ErrServerClosed {
-			ss.logger.Error("echo server error", zap.Error(err))
-			done <- err
-		} else {
-			done <- nil
-		}
-	}()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		err := ss.echo.Shutdown(shutdownCtx)
-		if err != nil {
-			ss.logger.Error("failed to shutdown echo server", zap.Error(err))
-			return err
-		}
-		return ctx.Err()
-	}
 }
 
 func (ss *MediorumServer) startPprofServer(ctx context.Context) error {

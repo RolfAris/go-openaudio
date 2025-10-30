@@ -19,9 +19,7 @@ import (
 	nm "github.com/cometbft/cometbft/node"
 	"github.com/cometbft/cometbft/rpc/client/local"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 // subscribes by tx hash, pubsub completes once tx
@@ -36,8 +34,6 @@ type Server struct {
 	self           corev1connect.CoreServiceClient
 	eth            *eth.EthService
 
-	httpServer         *echo.Echo
-	grpcServer         *grpc.Server
 	pool               *pgxpool.Pool
 	mediorumPoSChannel chan pos.PoSRequest
 
@@ -59,21 +55,17 @@ type Server struct {
 
 	rewards *rewards.RewardAttester
 
-	awaitHttpServerReady chan struct{}
-	awaitRpcReady        chan struct{}
-	awaitEthReady        chan struct{}
+	awaitRpcReady chan struct{}
+	awaitEthReady chan struct{}
 }
 
-func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.Config, logger *zap.Logger, pool *pgxpool.Pool, ethService *eth.EthService, posChannel chan pos.PoSRequest) (*Server, error) {
+func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.Config, logger *zap.Logger, pool *pgxpool.Pool, ethService *eth.EthService, posChannel chan pos.PoSRequest) *Server {
 	// create mempool
 	mempl := NewMempool(logger, config, db.New(pool), cconfig.Mempool.Size)
 
 	// create pubsubs
 	txPubsub := pubsub.NewPubsub[struct{}]()
 	blockNumPubsub := pubsub.NewPubsub[int64]()
-
-	httpServer := echo.New()
-	grpcServer := grpc.NewServer()
 
 	z := logger.With(zap.String("service", "core"))
 	z.Info("core server starting")
@@ -101,23 +93,54 @@ func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.
 		cache:            NewCache(config),
 		abciState:        NewABCIState(config.RetainHeight),
 
-		httpServer: httpServer,
-		grpcServer: grpcServer,
-
 		rewards: rewards.NewRewardAttester(config.EthereumKey, config.Rewards),
 
-		awaitHttpServerReady: make(chan struct{}),
-		awaitRpcReady:        make(chan struct{}),
-		awaitEthReady:        make(chan struct{}),
+		awaitRpcReady: make(chan struct{}),
+		awaitEthReady: make(chan struct{}),
 	}
 
-	return s, nil
+	return s
+}
+
+func (s *Server) Init() error {
+	logger := s.logger
+
+	logger.Info("core server initializing")
+
+	if err := db.RunMigrations(s.logger, s.config.PSQLConn, false); err != nil {
+		return fmt.Errorf("running migrations: %v", err)
+	}
+
+	logger.Info("db migrations successful")
+
+	s.CompactStateDB()
+	s.CompactBlockstoreDB()
+	logger.Info("finished compacting db")
+
+	return nil
+}
+
+func (s *Server) Run() error {
+	s.lc.AddManagedRoutine("abci", s.startABCI)
+	s.lc.AddManagedRoutine("registry bridge", s.startRegistryBridge)
+	s.lc.AddManagedRoutine("sync tasks", s.startSyncTasks)
+	s.lc.AddManagedRoutine("cache", s.startCache)
+	s.lc.AddManagedRoutine("data companion", s.startDataCompanion)
+	s.lc.AddManagedRoutine("log sync", s.syncLogs)
+	s.lc.AddManagedRoutine("state sync", s.startStateSync)
+	s.lc.AddManagedRoutine("mempool cache", s.startMempoolCache)
+	s.lc.AddManagedRoutine("peer manager", s.managePeers)
+	s.lc.AddManagedRoutine("tx count cache", s.cacheTxCount)
+
+	s.logger.Info("routines started")
+
+	s.lc.Wait()
+	return nil
 }
 
 func (s *Server) Start() error {
 	s.lc.AddManagedRoutine("abci", s.startABCI)
 	s.lc.AddManagedRoutine("registry bridge", s.startRegistryBridge)
-	s.lc.AddManagedRoutine("echo server", s.startEchoServer)
 	s.lc.AddManagedRoutine("sync tasks", s.startSyncTasks)
 	s.lc.AddManagedRoutine("cache", s.startCache)
 	s.lc.AddManagedRoutine("data companion", s.startDataCompanion)
@@ -160,7 +183,6 @@ func (s *Server) Shutdown() error {
 	if err := s.lc.ShutdownWithTimeout(60 * time.Second); err != nil {
 		return fmt.Errorf("failure shutting down core: %v", err)
 	}
-	s.grpcServer.GracefulStop()
 
 	return nil
 }

@@ -7,17 +7,16 @@ import (
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/core/config"
-	"github.com/OpenAudio/go-openaudio/pkg/core/console"
 	"github.com/OpenAudio/go-openaudio/pkg/core/db"
 	"github.com/OpenAudio/go-openaudio/pkg/core/server"
 	"github.com/OpenAudio/go-openaudio/pkg/eth"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
 	"github.com/OpenAudio/go-openaudio/pkg/pos"
 	"github.com/OpenAudio/go-openaudio/pkg/types"
+	cconfig "github.com/cometbft/cometbft/config"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var _ types.CoreService = (*Core)(nil)
@@ -51,59 +50,72 @@ func (c *Core) GetBlock(ctx context.Context) (*v1.Block, error) {
 	}, nil
 }
 
-func Run(ctx context.Context, lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, coreService *server.CoreService, ethService *eth.EthService) error {
-	return run(ctx, lc, logger, posChannel, coreService, ethService)
+// InitResult holds the results of core initialization
+type InitResult struct {
+	Server      *server.Server
+	Config      *config.Config
+	CometConfig *cconfig.Config
+	Pool        *pgxpool.Pool
 }
 
-func run(ctx context.Context, lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, coreService *server.CoreService, ethService *eth.EthService) error {
-	logger.Info("good morning!")
+// InitCoreServer initializes and returns the core server without starting it
+func InitCoreServer(ctx context.Context, lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, ethService *eth.EthService) (*InitResult, error) {
+	logger.Info("initializing core server")
 
-	config, cometConfig, err := config.SetupNode(logger)
+	coreConfig, cometConfig, err := config.SetupNode(logger)
 	if err != nil {
-		return fmt.Errorf("setting up node: %v", err)
+		return nil, fmt.Errorf("setting up node: %v", err)
 	}
 
 	logger.Info("configuration created")
 
 	// db migrations
-	if err := db.RunMigrations(logger, config.PSQLConn, config.RunDownMigrations()); err != nil {
-		return fmt.Errorf("running migrations: %v", err)
+	if err := db.RunMigrations(logger, coreConfig.PSQLConn, coreConfig.RunDownMigrations()); err != nil {
+		return nil, fmt.Errorf("running migrations: %v", err)
 	}
 
 	logger.Info("db migrations successful")
 
 	// Use the passed context for the pool
-	pool, err := pgxpool.New(ctx, config.PSQLConn)
+	pool, err := pgxpool.New(ctx, coreConfig.PSQLConn)
 	if err != nil {
-		return fmt.Errorf("couldn't create pgx pool: %v", err)
-	}
-	defer pool.Close()
-
-	s, err := server.NewServer(lc, config, cometConfig, logger, pool, ethService, posChannel)
-	if err != nil {
-		return fmt.Errorf("server init error: %v", err)
+		return nil, fmt.Errorf("couldn't create pgx pool: %v", err)
 	}
 
-	s.CompactStateDB()
-	s.CompactBlockstoreDB()
-	logger.Info("finished compacting db")
+	s := server.NewServer(lc, coreConfig, cometConfig, logger, pool, ethService, posChannel)
 
-	// console gets run from core(main).go since it is an isolated go module
-	// unlike the other modules that register themselves on the echo http server
-	e := s.GetEcho()
-	_, err = console.NewConsole(config, logger, e, pool, ethService, coreService)
+	if err := s.Init(); err != nil {
+		return nil, fmt.Errorf("initializing core server: %v", err)
+	}
+
+	logger.Info("core server initialized")
+
+	return &InitResult{
+		Server:      s,
+		Config:      coreConfig,
+		CometConfig: cometConfig,
+		Pool:        pool,
+	}, nil
+}
+
+// Run is the legacy entry point that handles full core lifecycle (deprecated, use InitCoreServer + Start instead)
+func Run(ctx context.Context, lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, coreService *server.CoreService, ethService *eth.EthService) error {
+	result, err := InitCoreServer(ctx, lc, logger, posChannel, ethService)
 	if err != nil {
-		logger.Error("console init error", zap.Error(err))
 		return err
 	}
+	defer result.Pool.Close()
 
-	// create core service
-	coreService.SetCore(s)
+	// Wire core service
+	coreService.SetCore(result.Server)
 
-	if err := s.Start(); err != nil {
+	// Note: Console registration moved to app layer
+	// TODO: Remove this function once app.go is fully updated
+
+	if err := result.Server.Start(); err != nil {
 		logger.Error("core service crashed", zap.Error(err))
 		return err
 	}
 
-	return s.Shutdown()
+	return result.Server.Shutdown()
 }

@@ -27,7 +27,7 @@ type Web3API struct {
 	vars   *config.SandboxVars
 }
 
-func (s *Server) createEthRPC() error {
+func (s *Server) registerEthRPC(e *echo.Echo) error {
 	ethRpc := rpc.NewServer()
 
 	// Register the "eth" namespace
@@ -44,8 +44,6 @@ func (s *Server) createEthRPC() error {
 	if err := ethRpc.RegisterName("web3", &Web3API{server: s, vars: s.config.NewSandboxVars()}); err != nil {
 		return fmt.Errorf("failed to register web3 rpc: %v", err)
 	}
-
-	e := s.GetEcho()
 
 	e.POST("/core/erpc", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

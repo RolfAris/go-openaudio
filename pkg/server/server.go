@@ -58,11 +58,14 @@ type Server struct {
 	system  *system.SystemService
 	eth     *eth.EthService
 
+	coreServer     *coreServer.Server
+	mediorumServer *mediorumServer.MediorumServer
+
 	httpServer  *http.Server
 	httpsServer *http.Server
 }
 
-func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger, core *coreServer.CoreService, storage *mediorumServer.StorageService, systemSvc *system.SystemService, ethSvc *eth.EthService) *Server {
+func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger, core *coreServer.CoreService, storage *mediorumServer.StorageService, systemSvc *system.SystemService, ethSvc *eth.EthService, coreSrv *coreServer.Server, mediorumSrv *mediorumServer.MediorumServer) *Server {
 	return &Server{
 		ctx:    ctx,
 		config: config,
@@ -73,6 +76,9 @@ func NewServer(ctx context.Context, config *config.Config, logger *zap.Logger, c
 		storage: storage,
 		system:  systemSvc,
 		eth:     ethSvc,
+
+		coreServer:     coreSrv,
+		mediorumServer: mediorumSrv,
 	}
 }
 
@@ -115,7 +121,21 @@ func (s *Server) Init() error {
 	rpcGroup.POST(ethPath+"*", echo.WrapHandler(ethHandler))
 	rpcGroup.GET(ethPath+"*", echo.WrapHandler(ethHandler))
 
-	// REST Routes
+	// Register core business routes (if available)
+	if s.coreServer != nil {
+		if err := s.coreServer.RegisterRoutes(e); err != nil {
+			return fmt.Errorf("failed to register core routes: %w", err)
+		}
+	}
+
+	// Register mediorum business routes (if available)
+	if s.mediorumServer != nil {
+		if err := s.mediorumServer.RegisterRoutes(e); err != nil {
+			return fmt.Errorf("failed to register mediorum routes: %w", err)
+		}
+	}
+
+	// REST Routes (legacy/stubs)
 	restGroup := e.Group("")
 	restGroup.GET("/audio/:cid", stub)
 	restGroup.GET("/image/:cid", stub)

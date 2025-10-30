@@ -28,6 +28,10 @@ type App struct {
 	coreService    *core.Core
 	storageService *mediorum.Storage
 
+	// Business logic servers
+	coreServer     *coreServer.Server
+	mediorumServer *mediorumServer.MediorumServer
+
 	// RPC/HTTP server
 	server *server.Server
 
@@ -67,7 +71,6 @@ func (app *App) Init() error {
 	app.storageService.SetCore(app.coreService)
 
 	// 5. Create actual RPC service implementations (existing handlers)
-	// These are the REAL service implementations that exist
 	dbUrl := coreConfig.GetDbURL()
 	app.ethService = eth.NewEthService(
 		dbUrl,
@@ -81,12 +84,32 @@ func (app *App) Init() error {
 	app.storageRPCService = mediorumServer.NewStorageService()
 
 	// Only set storage service on core if storage is enabled
-	// TODO: Make this configurable
 	app.coreRPCService.SetStorageService(app.storageRPCService)
 
+	// 6. Initialize core business server
+	coreResult, err := core.InitCoreServer(app.ctx, app.lc, app.logger, app.posChannel, app.ethService)
+	if err != nil {
+		return fmt.Errorf("initializing core server: %w", err)
+	}
+	app.coreServer = coreResult.Server
+
+	// Wire core RPC service to core server
+	app.coreRPCService.SetCore(app.coreServer)
+
+	// 7. Initialize mediorum business server
+	mediorumResult, err := mediorum.InitMediorumServer(app.lc, app.logger, app.posChannel, app.coreRPCService)
+	if err != nil {
+		return fmt.Errorf("initializing mediorum server: %w", err)
+	}
+	app.mediorumServer = mediorumResult.Server
+
+	// Wire storage RPC service to mediorum server
+	app.storageRPCService.SetMediorum(app.mediorumServer)
+
+	// 8. Create system service
 	systemService := system.NewSystemService(app.coreRPCService, app.storageRPCService)
 
-	// 6. Initialize HTTP/RPC server with real service implementations
+	// 9. Initialize unified HTTP/RPC server with both business servers
 	app.server = server.NewServer(
 		app.ctx,
 		app.config,
@@ -95,10 +118,12 @@ func (app *App) Init() error {
 		app.storageRPCService,
 		systemService,
 		app.ethService,
+		app.coreServer,
+		app.mediorumServer,
 	)
 
 	if err := app.server.Init(); err != nil {
-		return fmt.Errorf("initializing server: %w", err)
+		return fmt.Errorf("initializing unified server: %w", err)
 	}
 
 	return nil
@@ -110,31 +135,18 @@ func (app *App) Run() error {
 
 	var g errgroup.Group
 
-	// Run Core (blockchain, consensus, CometBFT)
+	// Start Core business logic (blockchain, consensus, CometBFT)
 	g.Go(func() error {
-		if err := core.Run(
-			app.ctx,
-			app.lc,
-			app.logger,
-			app.posChannel,
-			app.coreRPCService,
-			app.ethService,
-		); err != nil {
-			return fmt.Errorf("core crashed: %w", err)
+		if err := app.coreServer.Start(); err != nil {
+			return fmt.Errorf("core server crashed: %w", err)
 		}
 		return nil
 	})
 
-	// Run Storage (mediorum, file storage, content delivery)
+	// Start Mediorum business logic (file storage, transcoding, replication)
 	g.Go(func() error {
-		if err := mediorum.Run(
-			app.lc,
-			app.logger,
-			app.posChannel,
-			app.storageRPCService,
-			app.coreRPCService,
-		); err != nil {
-			return fmt.Errorf("storage crashed: %w", err)
+		if err := app.mediorumServer.MustStart(); err != nil {
+			return fmt.Errorf("mediorum server crashed: %w", err)
 		}
 		return nil
 	})
@@ -147,12 +159,12 @@ func (app *App) Run() error {
 		return nil
 	})
 
-	// Run HTTP/RPC Server
+	// Run unified HTTP/RPC Server
 	g.Go(func() error {
 		if err := app.server.Run(); err != nil {
-			return fmt.Errorf("server crashed: %w", err)
+			return fmt.Errorf("unified server crashed: %w", err)
 		}
-		app.logger.Info("server shutdown")
+		app.logger.Info("unified server shutdown")
 		return nil
 	})
 

@@ -13,3 +13,14 @@ type CoreService interface {
 type StorageService interface {
 	GetUpload(ctx context.Context) (string, error)
 }
+
+type ProofOfStorageService interface {
+	SendPoSChallenge(ctx context.Context, blockHash []byte, blockHeight int64) error
+}
+
+type ProofOfWorkService interface {
+	ShouldProposeNewRollup(ctx context.Context, height int64) bool
+}
+
+type RegistryBridgeService interface {
+}

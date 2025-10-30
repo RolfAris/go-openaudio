@@ -50,14 +50,21 @@ func (s *Storage) SetCore(c types.CoreService) {
 	s.core = c
 }
 
-func Run(lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {
-	env := os.Getenv("OPENAUDIO_ENV")
-	logger.Info("starting mediorum", zap.String("OPENAUDIO_ENV", env))
-
-	return runMediorum(lc, logger, env, posChannel, storageService, core)
+// InitResult holds the results of mediorum initialization
+type InitResult struct {
+	Server *server.MediorumServer
+	Config server.MediorumConfig
 }
 
-func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {
+// InitMediorumServer initializes and returns the mediorum server without starting it
+func InitMediorumServer(lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, core *coreServer.CoreService) (*InitResult, error) {
+	env := os.Getenv("OPENAUDIO_ENV")
+	logger.Info("initializing mediorum", zap.String("OPENAUDIO_ENV", env))
+
+	return initMediorum(lc, logger, env, posChannel, core)
+}
+
+func initMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string, posChannel chan pos.PoSRequest, core *coreServer.CoreService) (*InitResult, error) {
 	logger = logger.With(zap.String("service", "mediorum"))
 
 	isProd := mediorumEnv == "prod"
@@ -88,22 +95,22 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		return err
 	})
 	if err := eg.Wait(); err != nil {
-		panic(err)
+		return nil, err
 	}
 	logger.Info("fetched registered nodes", zap.Int("peers", len(peers)), zap.Int("signers", len(signers)))
 
 	nodeEndpoint := os.Getenv("nodeEndpoint")
 	if nodeEndpoint == "" {
-		return errors.New("missing required env variable 'nodeEndpoint'")
+		return nil, errors.New("missing required env variable 'nodeEndpoint'")
 	}
 	privateKeyHex := os.Getenv("delegatePrivateKey")
 	if privateKeyHex == "" {
-		return errors.New("missing required env variable 'delegatePrivateKey'")
+		return nil, errors.New("missing required env variable 'delegatePrivateKey'")
 	}
 
 	privateKey, err := ethcontracts.ParsePrivateKeyHex(privateKeyHex)
 	if err != nil {
-		return fmt.Errorf("invalid private key: %v", err)
+		return nil, fmt.Errorf("invalid private key: %v", err)
 	}
 
 	// compute wallet address
@@ -170,11 +177,31 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 
 	ss, err := server.New(lc, logger, config, g, posChannel, core)
 	if err != nil {
-		return fmt.Errorf("failed to create server: %v", err)
+		return nil, fmt.Errorf("failed to create server: %v", err)
 	}
 
-	storageService.SetMediorum(ss)
-	return ss.MustStart()
+	logger.Info("mediorum server initialized")
+
+	return &InitResult{
+		Server: ss,
+		Config: config,
+	}, nil
+}
+
+// Run is the legacy entry point that handles full mediorum lifecycle (deprecated, use InitMediorumServer + MustStart instead)
+func Run(lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {
+	result, err := InitMediorumServer(lc, logger, posChannel, core)
+	if err != nil {
+		return err
+	}
+
+	// Wire storage service
+	storageService.SetMediorum(result.Server)
+
+	// Note: Route registration moved to app layer
+	// TODO: Remove this function once app.go is fully updated
+
+	return result.Server.MustStart()
 }
 
 func getenvWithDefault(key string, fallback string) string {
