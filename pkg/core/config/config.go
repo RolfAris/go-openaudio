@@ -50,8 +50,8 @@ const (
 )
 
 const (
-	ProdStateSyncRpcs  = "https://creatornode.audius.co,https://creatornode2.audius.co"
-	StageStateSyncRpcs = "https://creatornode11.audius.co,https://creatornode5.audius.co"
+	ProdStateSyncRpcs  = "https://creatornode.audius.co/core/crpc,https://creatornode2.audius.co/core/crpc"
+	StageStateSyncRpcs = "https://creatornode11.audius.co/core/crpc,https://creatornode5.audius.co/core/crpc"
 )
 
 const (
