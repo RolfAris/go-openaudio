@@ -18,16 +18,13 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/common"
 	"github.com/OpenAudio/go-openaudio/pkg/eth/contracts"
 	"github.com/OpenAudio/go-openaudio/pkg/sdk"
-	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 )
 
 const (
 	connectRPCInterval  = 15 * time.Second
-	cometRPCInterval    = 15 * time.Second
 	healthcheckInterval = 30 * time.Second
-	p2pcheckInterval    = 15 * time.Second
 	peerInfoInterval    = 15 * time.Second
 )
 
@@ -209,9 +206,6 @@ func (s *Server) managePeers(ctx context.Context) error {
 	connectRPCTicker := time.NewTicker(connectRPCInterval)
 	defer connectRPCTicker.Stop()
 
-	cometRPCTicker := time.NewTicker(cometRPCInterval)
-	defer cometRPCTicker.Stop()
-
 	healthcheckTicker := time.NewTicker(healthcheckInterval)
 	defer healthcheckTicker.Stop()
 
@@ -224,12 +218,6 @@ func (s *Server) managePeers(ctx context.Context) error {
 			s.RunningProcessWithMetadata(ProcessStatePeerManager, "Refreshing Connect RPC clients")
 			if err := s.refreshConnectRPCPeers(ctx, logger); err != nil {
 				logger.Error("could not refresh connectrpcs", zap.Error(err))
-			}
-			s.SleepingProcessWithMetadata(ProcessStatePeerManager, "Waiting for next cycle")
-		case <-cometRPCTicker.C:
-			s.RunningProcessWithMetadata(ProcessStatePeerManager, "Refreshing Comet RPC clients")
-			if err := s.refreshCometRPCPeers(ctx, logger); err != nil {
-				logger.Error("could not refresh cometbft rpcs", zap.Error(err))
 			}
 			s.SleepingProcessWithMetadata(ProcessStatePeerManager, "Waiting for next cycle")
 		case <-healthcheckTicker.C:
@@ -309,46 +297,6 @@ func (s *Server) refreshConnectRPCPeers(ctx context.Context, _ *zap.Logger) erro
 
 		if exists {
 			status.ConnectrpcClient = true
-			s.peerStatus.Set(ethAddress, status)
-		}
-	}
-
-	return nil
-}
-
-// refreshes the cometbft rpc clients in the server struct, does not test connectivity.
-func (s *Server) refreshCometRPCPeers(ctx context.Context, logger *zap.Logger) error {
-	validators, err := s.db.GetAllRegisteredNodes(ctx)
-	if err != nil {
-		return fmt.Errorf("could not get validators from db: %v", err)
-	}
-
-	for _, validator := range validators {
-		ethAddress := validator.EthAddress
-		self := s.config.WalletAddress
-		if ethAddress == self {
-			continue
-		}
-
-		status, exists := s.peerStatus.Get(ethAddress)
-		if s.cometRPCPeers.Has(ethAddress) {
-			if exists && !status.CometrpcClient {
-				status.CometrpcClient = true
-				s.peerStatus.Set(ethAddress, status)
-			}
-			continue
-		}
-
-		endpoint := validator.Endpoint + "/core/crpc"
-		cometRPC, err := rpchttp.New(endpoint)
-		if err != nil {
-			logger.Error("could not create cometrpc", zap.String("peer_endpoint", endpoint), zap.Error(err))
-			continue
-		}
-		s.cometRPCPeers.Set(ethAddress, cometRPC)
-
-		if exists {
-			status.CometrpcClient = true
 			s.peerStatus.Set(ethAddress, status)
 		}
 	}

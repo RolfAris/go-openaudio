@@ -46,10 +46,8 @@ type Server struct {
 	rpc   *local.Local
 	mempl *Mempool
 
-	connectRPCPeers  *safemap.SafeMap[EthAddress, corev1connect.CoreServiceClient]
-	cometRPCPeers    *safemap.SafeMap[EthAddress, *CometBFTRPC]
-	cometListenAddrs *safemap.SafeMap[CometBFTAddress, CometBFTListener]
-	peerStatus       *safemap.SafeMap[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer]
+	connectRPCPeers *safemap.SafeMap[EthAddress, corev1connect.CoreServiceClient]
+	peerStatus      *safemap.SafeMap[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer]
 
 	txPubsub       *TransactionHashPubsub
 	blockNumPubsub *BlockNumPubsub
@@ -90,16 +88,14 @@ func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.
 		pool:               pool,
 		mediorumPoSChannel: posChannel,
 
-		db:               db.New(pool),
-		mempl:            mempl,
-		connectRPCPeers:  safemap.New[EthAddress, corev1connect.CoreServiceClient](),
-		cometRPCPeers:    safemap.New[EthAddress, *CometBFTRPC](),
-		cometListenAddrs: safemap.New[CometBFTAddress, CometBFTListener](),
-		peerStatus:       safemap.New[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer](),
-		txPubsub:         txPubsub,
-		blockNumPubsub:   blockNumPubsub,
-		cache:            NewCache(config),
-		abciState:        NewABCIState(config.RetainHeight),
+		db:              db.New(pool),
+		mempl:           mempl,
+		connectRPCPeers: safemap.New[EthAddress, corev1connect.CoreServiceClient](),
+		peerStatus:      safemap.New[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer](),
+		txPubsub:        txPubsub,
+		blockNumPubsub:  blockNumPubsub,
+		cache:           NewCache(config),
+		abciState:       NewABCIState(config.RetainHeight),
 
 		httpServer: httpServer,
 		grpcServer: grpcServer,
