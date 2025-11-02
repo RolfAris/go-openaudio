@@ -48,6 +48,7 @@ type Server struct {
 
 	connectRPCPeers *safemap.SafeMap[EthAddress, corev1connect.CoreServiceClient]
 	peerStatus      *safemap.SafeMap[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer]
+	peerProvider    *CorePeerProvider
 
 	txPubsub       *TransactionHashPubsub
 	blockNumPubsub *BlockNumPubsub

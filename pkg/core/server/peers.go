@@ -17,6 +17,7 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
 	"github.com/OpenAudio/go-openaudio/pkg/common"
 	"github.com/OpenAudio/go-openaudio/pkg/eth/contracts"
+	"github.com/OpenAudio/go-openaudio/pkg/registrar"
 	"github.com/OpenAudio/go-openaudio/pkg/sdk"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
@@ -271,6 +272,14 @@ func (s *Server) refreshConnectRPCPeers(ctx context.Context, _ *zap.Logger) erro
 	validators, err := s.db.GetAllRegisteredNodes(ctx)
 	if err != nil {
 		return fmt.Errorf("could not get validators from db: %v", err)
+	}
+
+	peerProvider := s.peerProvider
+	for _, validator := range validators {
+		peerProvider.peers.Set(EthAddress(validator.EthAddress), registrar.Peer{
+			Host:   validator.Endpoint,
+			Wallet: validator.EthAddress,
+		})
 	}
 
 	for _, validator := range validators {
