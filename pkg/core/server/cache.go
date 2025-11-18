@@ -250,7 +250,12 @@ func (s *Server) startBlockEventSubscriber(ctx context.Context) error {
 			blockEvent := msg.Data().(types.EventDataNewBlock)
 			blockHeight := blockEvent.Block.Height
 			s.cache.currentHeight.Store(blockHeight)
-			s.blockNumPubsub.Publish(ctx, BlockNumPubsubTopic, blockHeight)
+			block, err := s.getBlock(ctx, blockHeight)
+			if err != nil {
+				s.logger.Error("error getting block", zap.Error(err))
+				continue
+			}
+			s.blockPubsub.Publish(ctx, BlockPubsubTopic, block)
 
 			upsertCache(s.cache.chainInfo, ChainInfoKey, func(chainInfo *v1.GetStatusResponse_ChainInfo) *v1.GetStatusResponse_ChainInfo {
 				chainInfo.CurrentHeight = blockHeight

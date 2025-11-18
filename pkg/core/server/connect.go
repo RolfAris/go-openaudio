@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -30,9 +31,10 @@ import (
 )
 
 type CoreService struct {
-	coreMu         sync.RWMutex
-	core           *Server
-	storageService storagev1connect.StorageServiceHandler
+	coreMu                 sync.RWMutex
+	blockStreamConnections atomic.Uint64
+	core                   *Server
+	storageService         storagev1connect.StorageServiceHandler
 }
 
 func NewCoreService() *CoreService {

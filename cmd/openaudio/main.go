@@ -76,6 +76,46 @@ var (
 	connectJSONOpt = connectproto.WithJSON(marshalOpts, unmarshalOpts)
 )
 
+// flushWriter wraps http.ResponseWriter to flush after every write
+type flushWriter struct {
+	http.ResponseWriter
+	flusher http.Flusher
+}
+
+func (fw *flushWriter) Write(p []byte) (int, error) {
+	n, err := fw.ResponseWriter.Write(p)
+	if fw.flusher != nil {
+		fw.flusher.Flush()
+	}
+	return n, err
+}
+
+// Flush implements http.Flusher
+func (fw *flushWriter) Flush() {
+	if fw.flusher != nil {
+		fw.flusher.Flush()
+	}
+}
+
+// flushingMiddleware wraps the response writer to flush immediately after each write
+func flushingMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			res := c.Response()
+			// Get the actual underlying flusher if available
+			var flusher http.Flusher
+			if f, ok := res.Writer.(http.Flusher); ok {
+				flusher = f
+			}
+			res.Writer = &flushWriter{
+				ResponseWriter: res.Writer,
+				flusher:        flusher,
+			}
+			return next(c)
+		}
+	}
+}
+
 type proxyConfig struct {
 	path   string
 	target string
@@ -491,6 +531,7 @@ func startEchoProxy(hostUrl *url.URL, logger *zap.Logger, coreService *coreServe
 
 	rpcGroup := e.Group("")
 	rpcGroup.Use(common.CORS())
+	rpcGroup.Use(flushingMiddleware()) // Force immediate flushing for streaming responses
 	corePath, coreHandler := corev1connect.NewCoreServiceHandler(coreService, connectJSONOpt, connect.WithInterceptors(coreServer.ReadyCheckInterceptor(coreService)))
 	rpcGroup.POST(corePath+"*", echo.WrapHandler(coreHandler))
 
@@ -635,7 +676,20 @@ func startEchoProxy(hostUrl *url.URL, logger *zap.Logger, coreService *coreServe
 	if config.tlsEnabled {
 		return startWithTLS(e, config.httpPort, config.httpsPort, hostUrl, logger)
 	}
-	return e.Start(":" + config.httpPort)
+
+	// Configure server with zero buffering for streaming
+	s := &http.Server{
+		Addr:            ":" + config.httpPort,
+		Handler:         e,
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		ReadTimeout:     30 * time.Second,
+		WriteTimeout:    0, // No write timeout for streaming
+		IdleTimeout:     120 * time.Second,
+		MaxHeaderBytes:  1 << 20,
+	}
+
+	return s.ListenAndServe()
 }
 
 func startWithTLS(e *echo.Echo, httpPort, httpsPort string, hostUrl *url.URL, logger *zap.Logger) error {
