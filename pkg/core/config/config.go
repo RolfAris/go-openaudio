@@ -41,6 +41,8 @@ const (
 	ProdDashboardURL  = "https://dashboard.audius.org"
 	StageDashboardURL = "https://dashboard.staging.audius.org"
 	DevDashboardURL   = "http://localhost"
+
+	DefaultCoreRootDir = "/data/core"
 )
 
 const (
@@ -50,8 +52,8 @@ const (
 )
 
 const (
-	ProdStateSyncRpcs  = "creatornode.audius.co,creatornode2.audius.co"
-	StageStateSyncRpcs = "creatornode11.audius.co,creatornode5.audius.co"
+	ProdStateSyncRpcs  = "https://creatornode.audius.co,https://creatornode2.audius.co"
+	StageStateSyncRpcs = "https://creatornode11.audius.co,https://creatornode5.audius.co"
 )
 
 const (

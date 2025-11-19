@@ -82,12 +82,18 @@ const (
 	// CoreServiceGetRewardAttestationProcedure is the fully-qualified name of the CoreService's
 	// GetRewardAttestation RPC.
 	CoreServiceGetRewardAttestationProcedure = "/core.v1.CoreService/GetRewardAttestation"
+	// CoreServiceGetRewardSenderAttestationProcedure is the fully-qualified name of the CoreService's
+	// GetRewardSenderAttestation RPC.
+	CoreServiceGetRewardSenderAttestationProcedure = "/core.v1.CoreService/GetRewardSenderAttestation"
 	// CoreServiceGetStreamURLsProcedure is the fully-qualified name of the CoreService's GetStreamURLs
 	// RPC.
 	CoreServiceGetStreamURLsProcedure = "/core.v1.CoreService/GetStreamURLs"
 	// CoreServiceGetUploadByCIDProcedure is the fully-qualified name of the CoreService's
 	// GetUploadByCID RPC.
 	CoreServiceGetUploadByCIDProcedure = "/core.v1.CoreService/GetUploadByCID"
+	// CoreServiceStreamBlocksProcedure is the fully-qualified name of the CoreService's StreamBlocks
+	// RPC.
+	CoreServiceStreamBlocksProcedure = "/core.v1.CoreService/StreamBlocks"
 )
 
 // CoreServiceClient is a client for the core.v1.CoreService service.
@@ -112,8 +118,10 @@ type CoreServiceClient interface {
 	GetReward(context.Context, *connect.Request[v1.GetRewardRequest]) (*connect.Response[v1.GetRewardResponse], error)
 	GetRewards(context.Context, *connect.Request[v1.GetRewardsRequest]) (*connect.Response[v1.GetRewardsResponse], error)
 	GetRewardAttestation(context.Context, *connect.Request[v1.GetRewardAttestationRequest]) (*connect.Response[v1.GetRewardAttestationResponse], error)
+	GetRewardSenderAttestation(context.Context, *connect.Request[v1.GetRewardSenderAttestationRequest]) (*connect.Response[v1.GetRewardSenderAttestationResponse], error)
 	GetStreamURLs(context.Context, *connect.Request[v1.GetStreamURLsRequest]) (*connect.Response[v1.GetStreamURLsResponse], error)
 	GetUploadByCID(context.Context, *connect.Request[v1.GetUploadByCIDRequest]) (*connect.Response[v1.GetUploadByCIDResponse], error)
+	StreamBlocks(context.Context, *connect.Request[v1.StreamBlocksRequest]) (*connect.ServerStreamForClient[v1.StreamBlocksResponse], error)
 }
 
 // NewCoreServiceClient constructs a client for the core.v1.CoreService service. By default, it uses
@@ -247,6 +255,12 @@ func NewCoreServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(coreServiceMethods.ByName("GetRewardAttestation")),
 			connect.WithClientOptions(opts...),
 		),
+		getRewardSenderAttestation: connect.NewClient[v1.GetRewardSenderAttestationRequest, v1.GetRewardSenderAttestationResponse](
+			httpClient,
+			baseURL+CoreServiceGetRewardSenderAttestationProcedure,
+			connect.WithSchema(coreServiceMethods.ByName("GetRewardSenderAttestation")),
+			connect.WithClientOptions(opts...),
+		),
 		getStreamURLs: connect.NewClient[v1.GetStreamURLsRequest, v1.GetStreamURLsResponse](
 			httpClient,
 			baseURL+CoreServiceGetStreamURLsProcedure,
@@ -257,6 +271,12 @@ func NewCoreServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			httpClient,
 			baseURL+CoreServiceGetUploadByCIDProcedure,
 			connect.WithSchema(coreServiceMethods.ByName("GetUploadByCID")),
+			connect.WithClientOptions(opts...),
+		),
+		streamBlocks: connect.NewClient[v1.StreamBlocksRequest, v1.StreamBlocksResponse](
+			httpClient,
+			baseURL+CoreServiceStreamBlocksProcedure,
+			connect.WithSchema(coreServiceMethods.ByName("StreamBlocks")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -284,8 +304,10 @@ type coreServiceClient struct {
 	getReward                    *connect.Client[v1.GetRewardRequest, v1.GetRewardResponse]
 	getRewards                   *connect.Client[v1.GetRewardsRequest, v1.GetRewardsResponse]
 	getRewardAttestation         *connect.Client[v1.GetRewardAttestationRequest, v1.GetRewardAttestationResponse]
+	getRewardSenderAttestation   *connect.Client[v1.GetRewardSenderAttestationRequest, v1.GetRewardSenderAttestationResponse]
 	getStreamURLs                *connect.Client[v1.GetStreamURLsRequest, v1.GetStreamURLsResponse]
 	getUploadByCID               *connect.Client[v1.GetUploadByCIDRequest, v1.GetUploadByCIDResponse]
+	streamBlocks                 *connect.Client[v1.StreamBlocksRequest, v1.StreamBlocksResponse]
 }
 
 // Ping calls core.v1.CoreService.Ping.
@@ -388,6 +410,11 @@ func (c *coreServiceClient) GetRewardAttestation(ctx context.Context, req *conne
 	return c.getRewardAttestation.CallUnary(ctx, req)
 }
 
+// GetRewardSenderAttestation calls core.v1.CoreService.GetRewardSenderAttestation.
+func (c *coreServiceClient) GetRewardSenderAttestation(ctx context.Context, req *connect.Request[v1.GetRewardSenderAttestationRequest]) (*connect.Response[v1.GetRewardSenderAttestationResponse], error) {
+	return c.getRewardSenderAttestation.CallUnary(ctx, req)
+}
+
 // GetStreamURLs calls core.v1.CoreService.GetStreamURLs.
 func (c *coreServiceClient) GetStreamURLs(ctx context.Context, req *connect.Request[v1.GetStreamURLsRequest]) (*connect.Response[v1.GetStreamURLsResponse], error) {
 	return c.getStreamURLs.CallUnary(ctx, req)
@@ -396,6 +423,11 @@ func (c *coreServiceClient) GetStreamURLs(ctx context.Context, req *connect.Requ
 // GetUploadByCID calls core.v1.CoreService.GetUploadByCID.
 func (c *coreServiceClient) GetUploadByCID(ctx context.Context, req *connect.Request[v1.GetUploadByCIDRequest]) (*connect.Response[v1.GetUploadByCIDResponse], error) {
 	return c.getUploadByCID.CallUnary(ctx, req)
+}
+
+// StreamBlocks calls core.v1.CoreService.StreamBlocks.
+func (c *coreServiceClient) StreamBlocks(ctx context.Context, req *connect.Request[v1.StreamBlocksRequest]) (*connect.ServerStreamForClient[v1.StreamBlocksResponse], error) {
+	return c.streamBlocks.CallServerStream(ctx, req)
 }
 
 // CoreServiceHandler is an implementation of the core.v1.CoreService service.
@@ -420,8 +452,10 @@ type CoreServiceHandler interface {
 	GetReward(context.Context, *connect.Request[v1.GetRewardRequest]) (*connect.Response[v1.GetRewardResponse], error)
 	GetRewards(context.Context, *connect.Request[v1.GetRewardsRequest]) (*connect.Response[v1.GetRewardsResponse], error)
 	GetRewardAttestation(context.Context, *connect.Request[v1.GetRewardAttestationRequest]) (*connect.Response[v1.GetRewardAttestationResponse], error)
+	GetRewardSenderAttestation(context.Context, *connect.Request[v1.GetRewardSenderAttestationRequest]) (*connect.Response[v1.GetRewardSenderAttestationResponse], error)
 	GetStreamURLs(context.Context, *connect.Request[v1.GetStreamURLsRequest]) (*connect.Response[v1.GetStreamURLsResponse], error)
 	GetUploadByCID(context.Context, *connect.Request[v1.GetUploadByCIDRequest]) (*connect.Response[v1.GetUploadByCIDResponse], error)
+	StreamBlocks(context.Context, *connect.Request[v1.StreamBlocksRequest], *connect.ServerStream[v1.StreamBlocksResponse]) error
 }
 
 // NewCoreServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -551,6 +585,12 @@ func NewCoreServiceHandler(svc CoreServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(coreServiceMethods.ByName("GetRewardAttestation")),
 		connect.WithHandlerOptions(opts...),
 	)
+	coreServiceGetRewardSenderAttestationHandler := connect.NewUnaryHandler(
+		CoreServiceGetRewardSenderAttestationProcedure,
+		svc.GetRewardSenderAttestation,
+		connect.WithSchema(coreServiceMethods.ByName("GetRewardSenderAttestation")),
+		connect.WithHandlerOptions(opts...),
+	)
 	coreServiceGetStreamURLsHandler := connect.NewUnaryHandler(
 		CoreServiceGetStreamURLsProcedure,
 		svc.GetStreamURLs,
@@ -561,6 +601,12 @@ func NewCoreServiceHandler(svc CoreServiceHandler, opts ...connect.HandlerOption
 		CoreServiceGetUploadByCIDProcedure,
 		svc.GetUploadByCID,
 		connect.WithSchema(coreServiceMethods.ByName("GetUploadByCID")),
+		connect.WithHandlerOptions(opts...),
+	)
+	coreServiceStreamBlocksHandler := connect.NewServerStreamHandler(
+		CoreServiceStreamBlocksProcedure,
+		svc.StreamBlocks,
+		connect.WithSchema(coreServiceMethods.ByName("StreamBlocks")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/core.v1.CoreService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -605,10 +651,14 @@ func NewCoreServiceHandler(svc CoreServiceHandler, opts ...connect.HandlerOption
 			coreServiceGetRewardsHandler.ServeHTTP(w, r)
 		case CoreServiceGetRewardAttestationProcedure:
 			coreServiceGetRewardAttestationHandler.ServeHTTP(w, r)
+		case CoreServiceGetRewardSenderAttestationProcedure:
+			coreServiceGetRewardSenderAttestationHandler.ServeHTTP(w, r)
 		case CoreServiceGetStreamURLsProcedure:
 			coreServiceGetStreamURLsHandler.ServeHTTP(w, r)
 		case CoreServiceGetUploadByCIDProcedure:
 			coreServiceGetUploadByCIDHandler.ServeHTTP(w, r)
+		case CoreServiceStreamBlocksProcedure:
+			coreServiceStreamBlocksHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -698,10 +748,18 @@ func (UnimplementedCoreServiceHandler) GetRewardAttestation(context.Context, *co
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("core.v1.CoreService.GetRewardAttestation is not implemented"))
 }
 
+func (UnimplementedCoreServiceHandler) GetRewardSenderAttestation(context.Context, *connect.Request[v1.GetRewardSenderAttestationRequest]) (*connect.Response[v1.GetRewardSenderAttestationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("core.v1.CoreService.GetRewardSenderAttestation is not implemented"))
+}
+
 func (UnimplementedCoreServiceHandler) GetStreamURLs(context.Context, *connect.Request[v1.GetStreamURLsRequest]) (*connect.Response[v1.GetStreamURLsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("core.v1.CoreService.GetStreamURLs is not implemented"))
 }
 
 func (UnimplementedCoreServiceHandler) GetUploadByCID(context.Context, *connect.Request[v1.GetUploadByCIDRequest]) (*connect.Response[v1.GetUploadByCIDResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("core.v1.CoreService.GetUploadByCID is not implemented"))
+}
+
+func (UnimplementedCoreServiceHandler) StreamBlocks(context.Context, *connect.Request[v1.StreamBlocksRequest], *connect.ServerStream[v1.StreamBlocksResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("core.v1.CoreService.StreamBlocks is not implemented"))
 }

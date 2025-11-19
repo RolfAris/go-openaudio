@@ -19,6 +19,10 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	abortContextCanceled = "CONTEXT_CANCELED"
+)
+
 type RepairTracker struct {
 	StartedAt        time.Time `gorm:"primaryKey;not null"`
 	UpdatedAt        time.Time `gorm:"not null"`
@@ -107,11 +111,14 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 
 			logger.Info("repair starting")
 			err := ss.runRepair(ctx, &tracker)
-			tracker.FinishedAt = time.Now()
-			if err != nil {
+			if err != nil && !errors.Is(err, context.Canceled) {
+				tracker.FinishedAt = time.Now()
 				logger.Error("repair failed", zap.Error(err), zap.Duration("took", tracker.Duration))
 				tracker.AbortedReason = err.Error()
+			} else if errors.Is(err, context.Canceled) {
+				logger.Warn("repair interrupted", zap.Error(err), zap.Duration("took", tracker.Duration))
 			} else {
+				tracker.FinishedAt = time.Now()
 				logger.Info("repair OK", zap.Duration("took", tracker.Duration))
 				ss.lastSuccessfulRepair = tracker
 				if tracker.CleanupMode {
@@ -136,6 +143,13 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 	// scroll uploads and repair CIDs
 	// (later this can clean up "derivative" images if we make image resizing dynamic)
 	for {
+		// abort if context is canceled
+		if ctx.Err() != nil {
+			tracker.AbortedReason = abortContextCanceled
+			saveTracker()
+			return ctx.Err()
+		}
+
 		// abort if disk is filling up
 		if !ss.diskHasSpace() && !tracker.CleanupMode {
 			tracker.AbortedReason = "DISK_FULL"
@@ -153,6 +167,11 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			break
 		}
 		for _, u := range uploads {
+			if ctx.Err() != nil {
+				tracker.AbortedReason = abortContextCanceled
+				break
+			}
+
 			tracker.CursorUploadID = u.ID
 			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker)
 			// images are resized dynamically
@@ -171,6 +190,13 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 
 	// scroll audio_previews for repair
 	for {
+		// abort if context is canceled
+		if ctx.Err() != nil {
+			tracker.AbortedReason = abortContextCanceled
+			saveTracker()
+			return ctx.Err()
+		}
+
 		// abort if disk is filling up
 		if !ss.diskHasSpace() && !tracker.CleanupMode {
 			tracker.AbortedReason = "DISK_FULL"
@@ -188,6 +214,11 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			break
 		}
 		for _, u := range previews {
+			if ctx.Err() != nil {
+				tracker.AbortedReason = abortContextCanceled
+				break
+			}
+
 			tracker.CursorPreviewCID = u.CID
 			ss.repairCid(ctx, u.CID, nil, tracker)
 		}
@@ -198,6 +229,13 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 
 	// scroll older qm_cids table and repair
 	for {
+		// abort if context is canceled
+		if ctx.Err() != nil {
+			tracker.AbortedReason = abortContextCanceled
+			saveTracker()
+			return ctx.Err()
+		}
+
 		// abort if disk is filling up
 		if !ss.diskHasSpace() && !tracker.CleanupMode {
 			tracker.AbortedReason = "DISK_FULL"
@@ -222,6 +260,11 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			break
 		}
 		for _, cid := range cidBatch {
+			if ctx.Err() != nil {
+				tracker.AbortedReason = abortContextCanceled
+				break
+			}
+
 			tracker.CursorQmCID = cid
 			ss.repairCid(ctx, cid, nil, tracker)
 		}
@@ -230,7 +273,7 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 		saveTracker()
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHosts []string, tracker *RepairTracker) error {

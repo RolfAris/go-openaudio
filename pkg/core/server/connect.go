@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	storagev1connect "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1/v1connect"
 	"github.com/OpenAudio/go-openaudio/pkg/common"
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/server/signature"
+	"github.com/OpenAudio/go-openaudio/pkg/rewards"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -742,9 +744,7 @@ func (c *CoreService) GetStoredSnapshots(context.Context, *connect.Request[v1.Ge
 	snapshots, err := c.core.getStoredSnapshots()
 	if err != nil {
 		c.core.logger.Error("error getting stored snapshots", zap.Error(err))
-		return connect.NewResponse(&v1.GetStoredSnapshotsResponse{
-			Snapshots: []*v1.SnapshotMetadata{},
-		}), nil
+		return nil, connect.NewError(connect.CodeInternal, errors.New("could not get stored snapshots"))
 	}
 
 	snapshotResponses := make([]*v1.SnapshotMetadata, 0, len(snapshots))
@@ -799,16 +799,57 @@ func (c *CoreService) GetStatus(ctx context.Context, _ *connect.Request[v1.GetSt
 	dataCompanionState, _ := c.core.cache.dataCompanionState.Get(ProcessStateDataCompanion)
 	cacheState, _ := c.core.cache.cacheState.Get(ProcessStateCache)
 	logSyncState, _ := c.core.cache.logSyncState.Get(ProcessStateLogSync)
-	stateSyncState, _ := c.core.cache.stateSyncState.Get(ProcessStateStateSync)
+	snapshotCreatorState, _ := c.core.cache.snapshotCreatorState.Get(ProcessStateSnapshotCreator)
 	mempoolCacheState, _ := c.core.cache.mempoolCacheState.Get(ProcessStateMempoolCache)
 
-	// data companion state
+	// pruning state
+	pruningInfo.Enabled = !c.core.config.Archive
+	pruningInfo.RetainBlocks = c.core.config.RetainHeight
+	pruningInfo.LastSetRetainHeight = c.core.abciState.lastRetainHeight
+
 	if c.core.rpc != nil {
 		status, err := c.core.rpc.Status(ctx)
 		if err == nil {
 			pruningInfo.EarliestHeight = status.SyncInfo.EarliestBlockHeight
-			pruningInfo.Enabled = status.SyncInfo.EarliestBlockHeight != 1
-			pruningInfo.RetainBlocks = c.core.config.RetainHeight
+
+			// Calculate target retain height (what it should be)
+			if chainInfo != nil && !c.core.config.Archive {
+				latestHeight := chainInfo.CurrentHeight
+				retainWindow := c.core.config.RetainHeight
+				if latestHeight > retainWindow {
+					pruningInfo.TargetRetainHeight = latestHeight - retainWindow
+				}
+			}
+
+			// Current retain height would come from CometBFT's data companion
+			// For now, use lastSetRetainHeight as approximation
+			pruningInfo.CurrentRetainHeight = c.core.abciState.lastRetainHeight
+		}
+	}
+
+	// Data companion status from process state
+	if dataCompanionState != nil {
+		switch dataCompanionState.State {
+		case v1.GetStatusResponse_ProcessInfo_PROCESS_STATE_COMPLETED:
+			pruningInfo.DataCompanionStatus = "Archive mode (pruning disabled)"
+		case v1.GetStatusResponse_ProcessInfo_PROCESS_STATE_RUNNING:
+			pruningInfo.DataCompanionStatus = "Active"
+		case v1.GetStatusResponse_ProcessInfo_PROCESS_STATE_SLEEPING:
+			if dataCompanionState.Metadata != "" {
+				pruningInfo.DataCompanionStatus = dataCompanionState.Metadata
+			} else {
+				pruningInfo.DataCompanionStatus = "Sleeping"
+			}
+		case v1.GetStatusResponse_ProcessInfo_PROCESS_STATE_ERROR:
+			pruningInfo.DataCompanionStatus = "Error: " + dataCompanionState.Error
+		case v1.GetStatusResponse_ProcessInfo_PROCESS_STATE_STARTING:
+			pruningInfo.DataCompanionStatus = "Starting"
+		default:
+			pruningInfo.DataCompanionStatus = "Unknown"
+		}
+
+		if dataCompanionState.StartedAt != nil {
+			pruningInfo.LastUpdateTime = dataCompanionState.StartedAt.Seconds
 		}
 	}
 
@@ -821,7 +862,7 @@ func (c *CoreService) GetStatus(ctx context.Context, _ *connect.Request[v1.GetSt
 		DataCompanion:  dataCompanionState,
 		Cache:          cacheState,
 		LogSync:        logSyncState,
-		StateSync:      stateSyncState,
+		StateSync:      snapshotCreatorState,
 		MempoolCache:   mempoolCacheState,
 	}
 
@@ -863,6 +904,9 @@ func (c *CoreService) GetRewardAttestation(ctx context.Context, req *connect.Req
 	if specifier == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("specifier is required"))
 	}
+	if len(specifier) > 256 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("specifier too long"))
+	}
 	claimAuthority := req.Msg.ClaimAuthority
 	if claimAuthority == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("claim_authority is required"))
@@ -875,50 +919,67 @@ func (c *CoreService) GetRewardAttestation(ctx context.Context, req *connect.Req
 	if amount == 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("amount is required"))
 	}
+	rewardId := req.Msg.RewardId
+	if rewardId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward_id is required"))
+	}
+	if req.Msg.AmountDecimals > 18 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("amount_decimals too large; max 18"))
+	}
 
 	// Get programmatic reward by deployed address
-	reward, err := c.core.db.GetReward(ctx, rewardAddress)
+	dbReward, err := c.core.db.GetReward(ctx, rewardAddress)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("programmatic reward not found"))
 	}
 
-	sigData := &v1.RewardAttestationSignature{
-		EthRecipientAddress: req.Msg.EthRecipientAddress,
-		Amount:              req.Msg.Amount,
-		RewardAddress:       req.Msg.RewardAddress,
-		RewardId:            req.Msg.RewardId,
-		Specifier:           req.Msg.Specifier,
-		ClaimAuthority:      req.Msg.ClaimAuthority,
-	}
-
-	signer, err := common.ProtoRecover(sigData, req.Msg.Signature)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("signature recovery failure"))
-	}
-
-	// Verify claim authority is authorized to sign for this reward
-	authorized := false
-	for _, ca := range reward.ClaimAuthorities {
-		if strings.EqualFold(ca, signer) {
-			authorized = true
-			break
+	// Convert DB reward to rewards package format
+	claimAuthorities := make([]rewards.ClaimAuthority, len(dbReward.ClaimAuthorities))
+	for i, ca := range dbReward.ClaimAuthorities {
+		claimAuthorities[i] = rewards.ClaimAuthority{
+			Address: ca,
+			Name:    "", // Name not stored in DB
 		}
 	}
-	if !authorized {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("claim authority not authorized for this programmatic reward"))
+
+	reward := rewards.Reward{
+		ClaimAuthorities: claimAuthorities,
+		Amount:           uint64(dbReward.Amount),
+		RewardId:         dbReward.RewardID,
+		Name:             dbReward.Name,
 	}
 
-	if !strings.EqualFold(req.Msg.GetClaimAuthority(), signer) {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("claim authority and signer mismatch"))
+	// Create claim for validation (without RewardAddress to maintain backward compatibility)
+	claim := rewards.RewardClaim{
+		RecipientEthAddress: ethRecipientAddress,
+		Amount:              amount,
+		RewardID:            req.Msg.RewardId,
+		Specifier:           specifier,
+		ClaimAuthority:      claimAuthority, // Using claimAuthority as oracle for programmatic rewards
+		Decimals:            req.Msg.AmountDecimals,
 	}
 
-	attestation, err := common.ProtoSign(c.core.config.EthereumKey, sigData)
+	// Create a temporary RewardAttester for validation
+	attester := rewards.NewRewardAttester(c.core.config.EthereumKey, []rewards.Reward{reward})
+
+	// Validate the claim
+	if err := attester.Validate(claim); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("claim validation failed: %w", err))
+	}
+
+	// Authenticate the claim using the rewards package logic
+	if err := attester.Authenticate(claim, signature); err != nil {
+		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("authentication failed: %w", err))
+	}
+
+	// Generate attestation using the rewards package logic
+	_, attestation, err := attester.Attest(claim)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, errors.New("error signing attestation"))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("attestation generation failed: %w", err))
 	}
 
 	res := &v1.GetRewardAttestationResponse{
-		Owner:       c.core.rewards.EthereumAddress,
+		Owner:       attester.EthereumAddress,
 		Attestation: attestation,
 	}
 
@@ -1493,45 +1554,44 @@ func (c *CoreService) GetSlashAttestations(ctx context.Context, req *connect.Req
 	}), nil
 }
 
-// authenticateProgrammaticRewardClaim validates signatures for programmatic rewards
-// using the structured protobuf signature format to prevent cross-reward attacks
-func (c *CoreService) authenticateProgrammaticRewardClaim(
-	ethRecipientAddress string,
-	amount uint64,
-	rewardAddress string,
-	rewardID string,
-	specifier string,
-	claimAuthority string,
-	signature string,
-) error {
-	// Create the structured signature payload that claim authorities must sign
-	sigPayload := &v1.RewardAttestationSignature{
-		EthRecipientAddress: ethRecipientAddress,
-		Amount:              amount,
-		RewardAddress:       rewardAddress, // This prevents cross-reward signature reuse
-		RewardId:            rewardID,
-		Specifier:           specifier,
-		ClaimAuthority:      claimAuthority,
+// GetRewardSenderAttestation implements v1connect.CoreServiceHandler.
+func (c *CoreService) GetRewardSenderAttestation(ctx context.Context, req *connect.Request[v1.GetRewardSenderAttestationRequest]) (*connect.Response[v1.GetRewardSenderAttestationResponse], error) {
+	address := req.Msg.Address
+	if address == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address is required"))
 	}
 
-	// Marshal the protobuf message to get the bytes that should be signed
-	sigBytes, err := proto.Marshal(sigPayload)
+	rewardsManagerPubkey := req.Msg.RewardsManagerPubkey
+	if rewardsManagerPubkey == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward manager pubkey is required"))
+	}
+
+	validators, err := c.core.db.GetAllEthAddressesOfRegisteredNodes(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to marshal signature payload: %w", err)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error finding validators: %w", err))
 	}
 
-	// Verify the signature using the common signature verification
-	_, sender, err := common.EthRecover(signature, sigBytes)
+	notValidator := !slices.ContainsFunc(validators, func(validator string) bool {
+		return strings.EqualFold(validator, address)
+	})
+
+	if notValidator {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address not a validator"))
+	}
+
+	owner, attestation, err := rewards.GetCreateSenderAttestation(c.core.config.EthereumKey, &rewards.CreateSenderAttestationParams{
+		NewSenderAddress:            address,
+		RewardsManagerAccountPubKey: rewardsManagerPubkey,
+	})
+
 	if err != nil {
-		return fmt.Errorf("failed to recover signature: %w", err)
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("could not create attestation"))
 	}
 
-	// Ensure the recovered address matches the claim authority address
-	if !strings.EqualFold(sender, claimAuthority) {
-		return fmt.Errorf("signature sender %s does not match claim authority %s", sender, claimAuthority)
-	}
-
-	return nil
+	return connect.NewResponse(&v1.GetRewardSenderAttestationResponse{
+		Owner:       owner,
+		Attestation: attestation,
+	}), nil
 }
 
 func ReadyCheckInterceptor(c *CoreService) connect.UnaryInterceptorFunc {

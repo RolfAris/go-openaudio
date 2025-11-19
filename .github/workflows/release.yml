@@ -3,8 +3,15 @@ name: Create Release
 on:
   workflow_dispatch:
     inputs:
+      branch:
+        description: 'Source branch'
+        required: true
+        type: choice
+        options:
+          - main
+          - mainnet-alpha-beta
       version:
-        description: 'Release version (e.g., v0.1.0)'
+        description: 'Release version (e.g., v1.0.0, v2.0.0-beta.1)'
         required: true
         type: string
       release_notes:
@@ -22,6 +29,36 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Verify version matches .version.json
+        run: |
+          # Read version from .version.json
+          VERSION_FILE="pkg/version/.version.json"
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "Error: $VERSION_FILE not found"
+            exit 1
+          fi
+
+          # Extract version from JSON file
+          JSON_VERSION=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$VERSION_FILE" | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+          # Remove 'v' prefix from input version if present for comparison
+          INPUT_VERSION="${{ inputs.version }}"
+          INPUT_VERSION_NO_V="${INPUT_VERSION#v}"
+
+          # Check if versions match (comparing without 'v' prefix)
+          if [ "$JSON_VERSION" != "$INPUT_VERSION_NO_V" ]; then
+            echo "Error: Version mismatch!"
+            echo "  Release version: $INPUT_VERSION_NO_V"
+            echo "  .version.json:   $JSON_VERSION"
+            echo ""
+            echo "Please update $VERSION_FILE to match the release version before creating a release."
+            exit 1
+          fi
+
+          echo "Version check passed: $JSON_VERSION"
 
       - name: Create tag
         run: |
@@ -30,6 +67,17 @@ jobs:
           git tag -a ${{ inputs.version }} -m "Release ${{ inputs.version }}"
           git push origin ${{ inputs.version }}
 
+      - name: Determine if prerelease
+        id: prerelease
+        run: |
+          # main branch releases are prereleases
+          # mainnet-alpha-beta releases are stable
+          if [[ "${{ inputs.branch }}" == "main" ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -37,108 +85,16 @@ jobs:
           name: ${{ inputs.version }}
           body: ${{ inputs.release_notes }}
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
           generate_release_notes: true
 
-  build-docker-amd64:
-    needs: create-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Build binary
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o openaudio-amd64 ./cmd/openaudio
-
-      - name: Build and push AMD64 image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./cmd/openaudio/Dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: openaudio/go-openaudio:${{ inputs.version }}-amd64
-          build-args: |
-            PREBUILT_BINARY=openaudio-amd64
-            GIT_SHA=${{ github.sha }}
-          target: prod
-
-  build-docker-arm64:
-    needs: create-release
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.version }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-
-      - name: Build binary
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o openaudio-arm64 ./cmd/openaudio
-
-      - name: Build and push ARM64 image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./cmd/openaudio/Dockerfile
-          platforms: linux/arm64
-          push: true
-          tags: openaudio/go-openaudio:${{ inputs.version }}-arm64
-          build-args: |
-            PREBUILT_BINARY=openaudio-arm64
-            GIT_SHA=${{ github.sha }}
-          target: prod
-
-  merge-docker-manifests:
-    needs: [build-docker-amd64, build-docker-arm64]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Create and push multi-platform manifest
-        run: |
-          docker buildx imagetools create -t openaudio/go-openaudio:${{ inputs.version }} \
-            -t openaudio/go-openaudio:latest \
-            openaudio/go-openaudio:${{ inputs.version }}-amd64 \
-            openaudio/go-openaudio:${{ inputs.version }}-arm64
+  build-test-push:
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tag: ${{ inputs.version }}
+      ref: ${{ inputs.version }}
+      push: true
+    secrets: inherit
 
   publish-to-buf:
     needs: create-release

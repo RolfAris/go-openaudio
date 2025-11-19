@@ -31,7 +31,7 @@ type Server struct {
 	config         *config.Config
 	cometbftConfig *cconfig.Config
 	logger         *zap.Logger
-	self           corev1connect.CoreServiceClient
+	self           corev1connect.CoreServiceHandler
 	eth            *eth.EthService
 
 	pool               *pgxpool.Pool
@@ -47,8 +47,8 @@ type Server struct {
 	cometListenAddrs *safemap.SafeMap[CometBFTAddress, CometBFTListener]
 	peerStatus       *safemap.SafeMap[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer]
 
-	txPubsub       *TransactionHashPubsub
-	blockNumPubsub *BlockNumPubsub
+	txPubsub    *TransactionHashPubsub
+	blockPubsub *BlockPubsub
 
 	cache     *Cache
 	abciState *ABCIState
@@ -65,7 +65,7 @@ func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.
 
 	// create pubsubs
 	txPubsub := pubsub.NewPubsub[struct{}]()
-	blockNumPubsub := pubsub.NewPubsub[int64]()
+	blockPubsub := pubsub.NewPubsub[*v1.Block]()
 
 	z := logger.With(zap.String("service", "core"))
 	z.Info("core server starting")
@@ -89,9 +89,9 @@ func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.
 		cometListenAddrs: safemap.New[CometBFTAddress, CometBFTListener](),
 		peerStatus:       safemap.New[EthAddress, *v1.GetStatusResponse_PeerInfo_Peer](),
 		txPubsub:         txPubsub,
-		blockNumPubsub:   blockNumPubsub,
+		blockPubsub:      blockPubsub,
 		cache:            NewCache(config),
-		abciState:        NewABCIState(config.RetainHeight),
+		abciState:        NewABCIState(0), // Start at 0, will be calculated during Commit
 
 		rewards: rewards.NewRewardAttester(config.EthereumKey, config.Rewards),
 
@@ -145,7 +145,7 @@ func (s *Server) Start() error {
 	s.lc.AddManagedRoutine("cache", s.startCache)
 	s.lc.AddManagedRoutine("data companion", s.startDataCompanion)
 	s.lc.AddManagedRoutine("log sync", s.syncLogs)
-	s.lc.AddManagedRoutine("state sync", s.startStateSync)
+	s.lc.AddManagedRoutine("snapshot creator", s.startSnapshotCreator)
 	s.lc.AddManagedRoutine("mempool cache", s.startMempoolCache)
 	s.lc.AddManagedRoutine("peer manager", s.managePeers)
 	s.lc.AddManagedRoutine("tx count cache", s.cacheTxCount)
@@ -156,7 +156,7 @@ func (s *Server) Start() error {
 	return fmt.Errorf("core stopped or shut down")
 }
 
-func (s *Server) setSelf(self corev1connect.CoreServiceClient) {
+func (s *Server) setSelf(self corev1connect.CoreServiceHandler) {
 	s.self = self
 }
 

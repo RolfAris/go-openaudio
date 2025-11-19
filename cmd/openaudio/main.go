@@ -514,6 +514,7 @@ func startEchoProxy(hostUrl *url.URL, logger *zap.Logger, coreService *coreServe
 	rpcGroup.GET(corev1connect.CoreServiceGetStoredSnapshotsProcedure, connectGET(coreService.GetStoredSnapshots))
 	rpcGroup.GET(corev1connect.CoreServiceGetRewardAttestationProcedure, connectGET(coreService.GetRewardAttestation))
 	rpcGroup.GET(corev1connect.CoreServiceGetRewardsProcedure, connectGET(coreService.GetRewards))
+	rpcGroup.GET(corev1connect.CoreServiceGetRewardSenderAttestationProcedure, connectGET(coreService.GetRewardSenderAttestation))
 
 	// storage GET routes
 	rpcGroup.GET(storagev1connect.StorageServiceGetIPDataProcedure, connectGET(storageService.GetIPData))
@@ -648,7 +649,7 @@ func startWithTLS(e *echo.Echo, httpPort, httpsPort string, hostUrl *url.URL, lo
 			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
 		}
 
-		certDir := getEnvString("audius_core_root_dir", "/audius-core") + "/echo/certs"
+		certDir := getEnvString("audius_core_root_dir", config.DefaultCoreRootDir) + "/echo/certs"
 		logger.Info("Creating certificate directory", zap.String("dir", certDir))
 		if err := os.MkdirAll(certDir, 0755); err != nil {
 			logger.Error("Failed to create certificate directory", zap.Error(err))
@@ -713,7 +714,7 @@ func startWithTLS(e *echo.Echo, httpPort, httpsPort string, hostUrl *url.URL, lo
 
 	logger.Info("TLS host whitelist: " + strings.Join(whitelist, ", "))
 	e.AutoTLSManager.HostPolicy = autocert.HostWhitelist(whitelist...)
-	e.AutoTLSManager.Cache = autocert.DirCache(getEnvString("audius_core_root_dir", "/audius-core") + "/echo/cache")
+	e.AutoTLSManager.Cache = autocert.DirCache(getEnvString("audius_core_root_dir", config.DefaultCoreRootDir) + "/echo/cache")
 	e.Pre(middleware.HTTPSRedirect())
 
 	eg := errgroup.Group{}

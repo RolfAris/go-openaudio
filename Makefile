@@ -55,26 +55,21 @@ docker-push-cpp:
 .PHONY: clean
 clean:
 	rm -f bin/*
-	rm -f contracts/build/*.abi contracts/build/*.bin
 	rm -f pkg/eth/contracts/gen/*.go
 
-.PHONY: install-deps install-go-deps
-install-deps: install-go-deps
-	@brew install protobuf
-	@brew install crane
-	@brew install bufbuild/buf/buf
-	@brew install solidity
+.PHONY: init-hooks
+init-hooks:
 	@gookme init --types pre-commit,pre-push || echo "Gookme init failed, check if it's installed (https://lmaxence.github.io/gookme)"
 
-install-go-deps:
+.PHONY: install-deps
+install-deps:
+	go install -v github.com/bufbuild/buf/cmd/buf@latest
 	go install -v github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-	go install -v google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	go install -v google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 	go install -v github.com/cortesi/modd/cmd/modd@latest
 	go install -v github.com/a-h/templ/cmd/templ@latest
 	go install -v github.com/ethereum/go-ethereum/cmd/abigen@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-	go install github.com/templui/templui/cmd/templui@latest
+	go install -v github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install -v github.com/templui/templui/cmd/templui@latest
 
 .PHONY: lint
 lint:
@@ -86,8 +81,6 @@ lint-fix:
 
 go.sum: go.mod
 go.mod: $(GO_SRCS)
-	@# dummy go.mod file to speed up tidy times
-	@[ -d node_modules ] && touch node_modules/go.mod || true
 	go mod tidy
 	@touch go.mod # in case there's nothing to tidy
 
@@ -137,7 +130,7 @@ docker-harness: docker-dev bin/openaudio-arm64-linux
 		--target harness \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg PREBUILT_BINARY=bin/openaudio-arm64-linux \
-		-t audius/openaudio:harness \
+		-t openaudio/go-openaudio:harness \
 		-f ./cmd/openaudio/Dockerfile \
 		./
 
@@ -146,7 +139,7 @@ docker-dev: bin/openaudio-arm64-linux
 		--target dev \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg PREBUILT_BINARY=bin/openaudio-arm64-linux \
-		-t audius/openaudio:dev \
+		-t openaudio/go-openaudio:dev \
 		-f ./cmd/openaudio/Dockerfile \
 		./
 
@@ -185,13 +178,18 @@ down: ss-down
 		--project-directory='./' \
 		--profile=openaudio-dev \
 		down -v
+	rm -rf tmp/oap*
 
 .PHONY: test
 test: test-mediorum test-integration test-unit
 
+.PHONY: test-state-sync
+test-state-sync:
+	@bash scripts/test-state-sync.sh
+
 .PHONY: test-unit
 test-unit:
-	@if [ -z "$(openaudio_CI)" ]; then \
+	@if [ -z "$(OPENAUDIO_CI)" ]; then \
 		$(MAKE) docker-harness; \
 	fi
 	@docker compose \
@@ -203,7 +201,7 @@ test-unit:
 
 .PHONY: test-mediorum
 test-mediorum:
-	@if [ -z "$(openaudio_CI)" ]; then \
+	@if [ -z "$(OPENAUDIO_CI)" ]; then \
 		$(MAKE) docker-harness; \
 	fi
 	@docker compose \
@@ -215,7 +213,7 @@ test-mediorum:
 
 .PHONY: test-integration
 test-integration:
-	@if [ -z "$(openaudio_CI)" ]; then \
+	@if [ -z "$(OPENAUDIO_CI)" ]; then \
 		$(MAKE) docker-harness; \
 	fi
 	@docker compose \

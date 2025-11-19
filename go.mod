@@ -25,7 +25,7 @@ require (
 	github.com/storyicon/sigverify v1.1.0
 	github.com/stretchr/testify v1.10.0
 	go.etcd.io/bbolt v1.4.0-alpha.0.0.20240404170359-43604f3112c5
-	gocloud.dev v0.39.0
+	gocloud.dev v0.40.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/sync v0.14.0
 	google.golang.org/grpc v1.70.0
@@ -255,7 +255,7 @@ require (
 	github.com/jaswdr/faker v1.19.1
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/minio/sha256-simd v1.0.0 // indirect
-	github.com/mr-tron/base58 v1.2.0 // indirect
+	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-base32 v0.0.3 // indirect
 	github.com/multiformats/go-base36 v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.0.3 // indirect

@@ -29,6 +29,7 @@ services:
     restart: unless-stopped
     command: bash /tmp/scripts/eth-ganache.sh
     stop_grace_period: 0s
+    pull_policy: always
     volumes:
       - ./dev/scripts/eth-ganache.sh:/tmp/scripts/eth-ganache.sh
     deploy:
@@ -40,7 +41,7 @@ services:
       - integration-tests
 
   openaudio-1:
-    image: ${OPENAUDIO_IMAGE:-audius/openaudio:dev}
+    image: ${OPENAUDIO_IMAGE:-openaudio/go-openaudio:dev}
     restart: unless-stopped
     env_file:
       - ./dev/env/openaudio-1.env
@@ -60,12 +61,13 @@ services:
       - ./pkg:/app/pkg
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
+      - ./tmp/oap1-data:/data
     profiles:
       - openaudio-dev
       - integration-tests
 
   openaudio-2:
-    image: ${OPENAUDIO_IMAGE:-audius/openaudio:dev}
+    image: ${OPENAUDIO_IMAGE:-openaudio/go-openaudio:dev}
     restart: unless-stopped
     env_file:
       - ./dev/env/openaudio-2.env
@@ -85,12 +87,13 @@ services:
       - ./pkg:/app/pkg
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
+      - ./tmp/oap2-data:/data
     profiles:
       - openaudio-dev
       - integration-tests
 
   openaudio-3:
-    image: ${OPENAUDIO_IMAGE:-audius/openaudio:dev}
+    image: ${OPENAUDIO_IMAGE:-openaudio/go-openaudio:dev}
     restart: unless-stopped
     env_file:
       - ./dev/env/openaudio-3.env
@@ -110,12 +113,13 @@ services:
       - ./pkg:/app/pkg
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
+      - ./tmp/oap3-data:/data
     profiles:
       - openaudio-dev
       - integration-tests
 
   openaudio-4:
-    image: ${OPENAUDIO_IMAGE:-audius/openaudio:dev}
+    image: ${OPENAUDIO_IMAGE:-openaudio/go-openaudio:dev}
     restart: unless-stopped
     env_file:
       - ./dev/env/openaudio-4.env
@@ -135,6 +139,7 @@ services:
       - ./pkg:/app/pkg
       - ./go.mod:/app/go.mod
       - ./go.sum:/app/go.sum
+      - ./tmp/oap4-data:/data
     profiles:
       - openaudio-dev
       - integration-tests
@@ -156,7 +161,7 @@ services:
       - openaudio-dev
 
   test-integration:
-    image: ${OPENAUDIO_TEST_HARNESS_IMAGE:-audius/openaudio:harness}
+    image: ${OPENAUDIO_TEST_HARNESS_IMAGE:-openaudio/go-openaudio:harness}
     command: go test -v -count=1 -timeout=90s ./pkg/integration_tests/...
     volumes:
       - ./cmd:/app/cmd
@@ -187,7 +192,7 @@ services:
       - integration-tests
 
   test-mediorum-unittests:
-    image: ${OPENAUDIO_TEST_HARNESS_IMAGE:-audius/openaudio:harness}
+    image: ${OPENAUDIO_TEST_HARNESS_IMAGE:-openaudio/go-openaudio:harness}
     command: go test -v -count=1 -timeout=60s ./pkg/mediorum/...
     volumes:
       - ./cmd:/app/cmd
@@ -202,7 +207,7 @@ services:
       - mediorum-unittests
 
   test-unittests:
-    image: ${OPENAUDIO_TEST_HARNESS_IMAGE:-audius/openaudio:harness}
+    image: ${OPENAUDIO_TEST_HARNESS_IMAGE:-openaudio/go-openaudio:harness}
     command:
       - go
       - test
