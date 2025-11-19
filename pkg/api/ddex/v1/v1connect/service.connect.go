@@ -41,6 +41,9 @@ const (
 	// DDEXServiceGetERNThreadProcedure is the fully-qualified name of the DDEXService's GetERNThread
 	// RPC.
 	DDEXServiceGetERNThreadProcedure = "/ddex.v1.DDEXService/GetERNThread"
+	// DDEXServiceGetERNEventsProcedure is the fully-qualified name of the DDEXService's GetERNEvents
+	// RPC.
+	DDEXServiceGetERNEventsProcedure = "/ddex.v1.DDEXService/GetERNEvents"
 )
 
 // DDEXServiceClient is a client for the ddex.v1.DDEXService service.
@@ -48,6 +51,7 @@ type DDEXServiceClient interface {
 	Send(context.Context, *connect.Request[v1.SendRequest]) (*connect.Response[v1.SendResponse], error)
 	GetERNMessage(context.Context, *connect.Request[v1.GetERNMessageRequest]) (*connect.Response[v1.GetERNMessageResponse], error)
 	GetERNThread(context.Context, *connect.Request[v1.GetERNThreadRequest]) (*connect.Response[v1.GetERNThreadResponse], error)
+	GetERNEvents(context.Context, *connect.Request[v1.GetERNEventsRequest]) (*connect.Response[v1.GetERNEventsResponse], error)
 }
 
 // NewDDEXServiceClient constructs a client for the ddex.v1.DDEXService service. By default, it uses
@@ -79,6 +83,12 @@ func NewDDEXServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(dDEXServiceMethods.ByName("GetERNThread")),
 			connect.WithClientOptions(opts...),
 		),
+		getERNEvents: connect.NewClient[v1.GetERNEventsRequest, v1.GetERNEventsResponse](
+			httpClient,
+			baseURL+DDEXServiceGetERNEventsProcedure,
+			connect.WithSchema(dDEXServiceMethods.ByName("GetERNEvents")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -87,6 +97,7 @@ type dDEXServiceClient struct {
 	send          *connect.Client[v1.SendRequest, v1.SendResponse]
 	getERNMessage *connect.Client[v1.GetERNMessageRequest, v1.GetERNMessageResponse]
 	getERNThread  *connect.Client[v1.GetERNThreadRequest, v1.GetERNThreadResponse]
+	getERNEvents  *connect.Client[v1.GetERNEventsRequest, v1.GetERNEventsResponse]
 }
 
 // Send calls ddex.v1.DDEXService.Send.
@@ -104,11 +115,17 @@ func (c *dDEXServiceClient) GetERNThread(ctx context.Context, req *connect.Reque
 	return c.getERNThread.CallUnary(ctx, req)
 }
 
+// GetERNEvents calls ddex.v1.DDEXService.GetERNEvents.
+func (c *dDEXServiceClient) GetERNEvents(ctx context.Context, req *connect.Request[v1.GetERNEventsRequest]) (*connect.Response[v1.GetERNEventsResponse], error) {
+	return c.getERNEvents.CallUnary(ctx, req)
+}
+
 // DDEXServiceHandler is an implementation of the ddex.v1.DDEXService service.
 type DDEXServiceHandler interface {
 	Send(context.Context, *connect.Request[v1.SendRequest]) (*connect.Response[v1.SendResponse], error)
 	GetERNMessage(context.Context, *connect.Request[v1.GetERNMessageRequest]) (*connect.Response[v1.GetERNMessageResponse], error)
 	GetERNThread(context.Context, *connect.Request[v1.GetERNThreadRequest]) (*connect.Response[v1.GetERNThreadResponse], error)
+	GetERNEvents(context.Context, *connect.Request[v1.GetERNEventsRequest]) (*connect.Response[v1.GetERNEventsResponse], error)
 }
 
 // NewDDEXServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -136,6 +153,12 @@ func NewDDEXServiceHandler(svc DDEXServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(dDEXServiceMethods.ByName("GetERNThread")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dDEXServiceGetERNEventsHandler := connect.NewUnaryHandler(
+		DDEXServiceGetERNEventsProcedure,
+		svc.GetERNEvents,
+		connect.WithSchema(dDEXServiceMethods.ByName("GetERNEvents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/ddex.v1.DDEXService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DDEXServiceSendProcedure:
@@ -144,6 +167,8 @@ func NewDDEXServiceHandler(svc DDEXServiceHandler, opts ...connect.HandlerOption
 			dDEXServiceGetERNMessageHandler.ServeHTTP(w, r)
 		case DDEXServiceGetERNThreadProcedure:
 			dDEXServiceGetERNThreadHandler.ServeHTTP(w, r)
+		case DDEXServiceGetERNEventsProcedure:
+			dDEXServiceGetERNEventsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -163,4 +188,8 @@ func (UnimplementedDDEXServiceHandler) GetERNMessage(context.Context, *connect.R
 
 func (UnimplementedDDEXServiceHandler) GetERNThread(context.Context, *connect.Request[v1.GetERNThreadRequest]) (*connect.Response[v1.GetERNThreadResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ddex.v1.DDEXService.GetERNThread is not implemented"))
+}
+
+func (UnimplementedDDEXServiceHandler) GetERNEvents(context.Context, *connect.Request[v1.GetERNEventsRequest]) (*connect.Response[v1.GetERNEventsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ddex.v1.DDEXService.GetERNEvents is not implemented"))
 }

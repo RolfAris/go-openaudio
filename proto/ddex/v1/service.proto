@@ -5,6 +5,7 @@ package ddex.v1;
 option go_package = "github.com/OpenAudio/go-openaudio/pkg/api/ddex/v1";
 
 import "ddex/v1/types.proto";
+import "ddex/v1/events.proto";
 
 service DDEXService {
   rpc Send(SendRequest) returns (SendResponse) {}

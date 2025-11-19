@@ -75,6 +75,24 @@ type CoreBlock struct {
 	CreatedAt pgtype.Timestamp
 }
 
+type CoreDdexErnEvent struct {
+	ID    int64
+	ErnID int64
+	Event []byte
+}
+
+type CoreDdexErnMessage struct {
+	ID              int64
+	Address         string
+	ThreadAddress   string
+	Owner           string
+	MessageID       string
+	MessageThreadID string
+	Message         []byte
+	TxHash          string
+	BlockHeight     int64
+}
+
 type CoreDeal struct {
 	Address     string
 	ErnAddress  string
