@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package ddex.v1;
+
+import "ddex/ern/v381/v381.proto";
+import "ddex/ern/v383/v383.proto";
+import "ddex/ern/v42/v42.proto";
+import "ddex/ern/v43/v43.proto";
+import "ddex/ern/v432/v432.proto";
+import "ddex/mead/v11/v11.proto";
+import "ddex/pie/v10/v10.proto";
+
+option go_package = "github.com/OpenAudio/go-openaudio/pkg/api/ddex/v1";
+
+message SignedTransaction {
+  // protobuf encoded Transaction payload
+  bytes payload = 1;
+  // EIP-191 signature of the payload
+  bytes signature = 2;
+}
+
+message Transaction {
+  Header header = 1;
+  Payload payload = 2;
+}
+
+message Header {
+  uint64 chain_id = 1;
+  uint64 nonce = 2;
+  uint64 deadline_height = 3;
+  // must match the recovered address from the signature
+  string from = 4;
+  string to = 5;
+}
+
+message Payload {
+  oneof action {
+    ElectronicReleaseNotification ern = 1;
+    PartyIdentificationAndEnrichment pie = 2;
+    MediaEnrichmentAndDescription mead = 3;
+  }
+}
+
+message TransactionEvent {
+  string sender = 1;
+  string tx_hash = 2;
+  int64 block_height = 3;
+}
+
+message ElectronicReleaseNotification {
+  oneof msg {
+    ddex.ern.v381.NewReleaseMessage nrm_v381 = 1;
+    ddex.ern.v383.NewReleaseMessage nrm_v383 = 2;
+    ddex.ern.v42.NewReleaseMessage nrm_v42 = 3;
+    ddex.ern.v43.NewReleaseMessage nrm_v43 = 4;
+    ddex.ern.v432.NewReleaseMessage nrm_v432 = 5;
+
+    ddex.ern.v381.CatalogListMessage clm_v381 = 6;
+    ddex.ern.v383.CatalogListMessage clm_v383 = 7;
+
+    ddex.ern.v381.PurgeReleaseMessage prm_v381 = 8;
+    ddex.ern.v383.PurgeReleaseMessage prm_v383 = 9;
+    ddex.ern.v42.PurgeReleaseMessage prm_v42 = 10;
+    ddex.ern.v43.PurgeReleaseMessage prm_v43 = 11;
+    ddex.ern.v432.PurgeReleaseMessage prm_v432 = 12;
+  }
+}
+
+message PartyIdentificationAndEnrichment {
+  oneof msg {
+    ddex.pie.v10.PieMessage v10 = 1;
+  }
+}
+
+message MediaEnrichmentAndDescription {
+  oneof msg {
+    ddex.mead.v11.MeadMessage v11 = 1;
+  }
+}

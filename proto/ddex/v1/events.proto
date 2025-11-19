@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package ddex.v1;
+
+option go_package = "github.com/OpenAudio/go-openaudio/pkg/api/ddex/v1";
+
+message EventHeader {
+  string sender = 1;
+  string tx_hash = 2;
+  int64 block_height = 3;
+  string chain_id = 4;
+}
+
+message ElectronicReleaseNotificationEvent {
+  EventHeader header = 1;
+  string owner = 2;
+  string address = 3;
+  string message_thread_id = 4;
+  string message_id = 5;
+}

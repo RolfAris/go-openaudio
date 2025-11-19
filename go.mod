@@ -1,6 +1,6 @@
 module github.com/OpenAudio/go-openaudio
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/a-h/templ v0.3.898
@@ -23,19 +23,20 @@ require (
 	github.com/speps/go-hashids/v2 v2.0.1
 	github.com/spf13/cast v1.7.0
 	github.com/storyicon/sigverify v1.1.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	go.etcd.io/bbolt v1.4.0-alpha.0.0.20240404170359-43604f3112c5
 	gocloud.dev v0.40.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/sync v0.14.0
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.6
+	google.golang.org/protobuf v1.36.9
 	gorm.io/driver/postgres v1.5.0
 	gorm.io/gorm v1.25.5
 )
 
 require (
 	connectrpc.com/connect v1.18.1
+	github.com/OpenAudio/ddex-proto v0.10.0
 	github.com/Oudwins/tailwind-merge-go v0.2.1
 	github.com/axiomhq/axiom-go v0.23.0
 	github.com/cockroachdb/pebble v1.1.2

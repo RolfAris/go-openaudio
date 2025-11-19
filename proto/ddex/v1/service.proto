@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package ddex.v1;
+
+option go_package = "github.com/OpenAudio/go-openaudio/pkg/api/ddex/v1";
+
+import "ddex/v1/types.proto";
+
+service DDEXService {
+  rpc Send(SendRequest) returns (SendResponse) {}
+
+  rpc GetERNMessage(GetERNMessageRequest) returns (GetERNMessageResponse) {}
+  rpc GetERNThread(GetERNThreadRequest) returns (GetERNThreadResponse) {}
+  rpc GetERNEvents(GetERNEventsRequest) returns (GetERNEventsResponse) {}
+}
+
+message SendRequest {
+  SignedTransaction transaction = 1;
+}
+
+message SendResponse {
+  string tx_hash = 1;
+}
+
+message MessageId {
+  string owner = 1;
+  string id = 2;
+}
+
+message MessageThreadId {
+  string owner = 1;
+  string id = 2;
+}
+
+message GetERNMessageRequest {
+  oneof lookup {
+    string address = 1;
+    MessageId message_id = 2;
+  }
+}
+
+message GetERNMessageResponse {
+  ElectronicReleaseNotification ern = 1;
+}
+
+message GetERNThreadRequest {
+  oneof lookup {
+    string address = 1;
+    MessageThreadId message_thread_id = 2;
+  }
+}
+
+message GetERNThreadResponse {
+  repeated ElectronicReleaseNotification ern = 1;
+}
+
+message GetERNEventsRequest {
+  oneof lookup {
+    string address = 1;
+    MessageThreadId message_thread_id = 2;
+    MessageId message_id = 3;
+  }
+}
+
+message GetERNEventsResponse {
+  repeated ElectronicReleaseNotificationEvent event = 1;
+}
