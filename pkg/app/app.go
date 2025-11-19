@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 
-	"github.com/OpenAudio/go-openaudio/pkg/api/openaudio/v1/v1connect"
 	"github.com/OpenAudio/go-openaudio/pkg/common"
 	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/labstack/echo/v4"
@@ -11,12 +10,12 @@ import (
 )
 
 type App struct {
-	core      v1connect.CoreHandler
-	storage   v1connect.StorageHandler
-	ddex      v1connect.DDEXHandler
-	validator v1connect.ValidatorHandler
-	p2p       v1connect.P2PHandler
-	system    v1connect.SystemHandler
+	// core      v1connect.CoreHandler
+	// storage   v1connect.StorageHandler
+	// ddex      v1connect.DDEXHandler
+	// validator v1connect.ValidatorHandler
+	// p2p       v1connect.P2PHandler
+	// system    v1connect.SystemHandler
 }
 
 func NewApp(config *config.Config) *App {
