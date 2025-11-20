@@ -62,7 +62,7 @@ func (s *Server) startABCI(ctx context.Context) error {
 	}
 	s.logger.Info("starting abci")
 
-	cometConfig := s.cometbftConfig
+	cometConfig := s.config.CometBFT
 	pv := privval.LoadFilePV(
 		cometConfig.PrivValidatorKeyFile(),
 		cometConfig.PrivValidatorStateFile(),
@@ -73,50 +73,9 @@ func (s *Server) startABCI(ctx context.Context) error {
 		return fmt.Errorf("failed to load node's key: %v", err)
 	}
 
-	nodeLogger, err := cmtflags.ParseLogLevel(s.config.CometLogLevel, setupNodeLogger(), "error")
+	nodeLogger, err := cmtflags.ParseLogLevel("consensus:debug,mempool:debug,*:error", setupNodeLogger(), "error")
 	if err != nil {
 		return fmt.Errorf("failed to parse log level: %v", err)
-	}
-
-	// query for existing blocks
-	alreadySynced := true
-	_, err = s.db.GetLatestBlock(context.Background())
-	if errors.Is(err, pgx.ErrNoRows) {
-		alreadySynced = false
-	} else if err != nil {
-		return fmt.Errorf("db not ready for ABCI: %v", err)
-	}
-
-	s.logger.Info("got latest block", zap.Bool("ss_enabled", s.config.StateSync.Enable), zap.Bool("already_synced", alreadySynced), zap.Int("rpc_servers", len(s.config.StateSync.RPCServers)))
-
-	if s.config.StateSync.Enable && !alreadySynced {
-		rpcServers := s.config.StateSync.RPCServers
-		s.logger.Info("state sync enabled", zap.Any("rpcservers", rpcServers))
-
-		// CometBFT requires at least 2 rpc servers, but we can still get away with duplicating the same one
-		if len(rpcServers) == 1 {
-			rpcServers = append(rpcServers, rpcServers[0])
-		}
-
-		// Normalize servers to point to the comet RPC endpoint
-		for i, server := range rpcServers {
-			if !strings.HasSuffix(server, "/core/crpc") {
-				rpcServers[i] = fmt.Sprintf("%s/core/crpc", server)
-			}
-		}
-
-		latestBlockHeight, latestBlockHash, err := s.stateSyncLatestBlock(rpcServers)
-		if err != nil {
-			s.logger.Error("could not get latest block for state sync", zap.Error(err))
-			s.ErrorProcess(ProcessStateABCI, fmt.Sprintf("could not get latest block for state sync: %v", err))
-			return err // do not attempt to block sync if state sync is enabled but failed
-		} else {
-			cometConfig.StateSync.Enable = true
-			cometConfig.StateSync.RPCServers = rpcServers
-			cometConfig.StateSync.TrustHeight = latestBlockHeight
-			cometConfig.StateSync.TrustHash = latestBlockHash
-			cometConfig.StateSync.ChunkFetchers = s.config.StateSync.ChunkFetchers
-		}
 	}
 
 	node, err := nm.NewNode(
@@ -281,7 +240,7 @@ func (s *Server) FinalizeBlock(ctx context.Context, req *abcitypes.FinalizeBlock
 		Height:    req.Height,
 		Hash:      hex.EncodeToString(req.Hash),
 		Proposer:  hex.EncodeToString(req.ProposerAddress),
-		ChainID:   s.config.GenesisFile.ChainID,
+		ChainID:   s.config.GenesisDoc.ChainID,
 		CreatedAt: s.db.ToPgxTimestamp(req.Time),
 	}); err != nil {
 		s.logger.Error("could not store block", zap.Error(err))
@@ -533,7 +492,7 @@ func (s *Server) ApplySnapshotChunk(_ context.Context, req *abcitypes.ApplySnaps
 		}, nil
 	}
 
-	if offeredMetadata.ChainID != s.config.GenesisFile.ChainID {
+	if offeredMetadata.ChainID != s.config.GenesisDoc.ChainID {
 		return &abcitypes.ApplySnapshotChunkResponse{
 			Result: abcitypes.APPLY_SNAPSHOT_CHUNK_RESULT_REJECT_SNAPSHOT,
 		}, nil
@@ -657,7 +616,7 @@ func (s *Server) isValidV2Transaction(tx []byte) (*v1beta1.Transaction, error) {
 
 	// check tx header info
 	header := msg.Envelope.Header
-	if header.ChainId != s.config.GenesisFile.ChainID {
+	if header.ChainId != s.config.GenesisDoc.ChainID {
 		return nil, fmt.Errorf("invalid chain id: %s", header.ChainId)
 	}
 

@@ -59,8 +59,8 @@ type Metadata struct {
 }
 
 // Helper functions for common filepath patterns
-func getSnapshotDir(rootDir, chainID string) string {
-	return filepath.Join(rootDir, fmt.Sprintf(snapshotDirPattern, chainID))
+func (s *Server) getSnapshotDir() string {
+	return filepath.Join(s.config.OpenAudio.Home, fmt.Sprintf(snapshotDirPattern, s.config.GenesisDoc.ChainID))
 }
 
 func getHeightDir(baseDir string, height int64) string {
@@ -91,8 +91,8 @@ func (s *Server) startSnapshotCreator(ctx context.Context) error {
 
 	logger := s.logger.With(zap.String("service", "state_sync"))
 
-	if !s.config.StateSync.ServeSnapshots {
-		logger.Info("ServeSnapshots is not enabled, skipping snapshot creation")
+	if !s.config.OpenAudio.Snapshot.Serve {
+		logger.Info("Snapshot serving is not enabled, skipping snapshot creation")
 		s.CompleteProcess(ProcessStateSnapshotCreator)
 		return nil
 	}
@@ -129,7 +129,7 @@ func (s *Server) startSnapshotCreator(ctx context.Context) error {
 		case msg := <-subscription.Out():
 			blockEvent := msg.Data().(types.EventDataNewBlock)
 			blockHeight := blockEvent.Block.Height
-			if blockHeight%s.config.StateSync.BlockInterval != 0 {
+			if blockHeight%s.config.OpenAudio.Snapshot.BlockInterval != 0 {
 				continue
 			}
 
@@ -160,7 +160,7 @@ func (s *Server) startSnapshotCreator(ctx context.Context) error {
 
 func (s *Server) createSnapshot(logger *zap.Logger, height int64) error {
 	// create snapshot directory if it doesn't exist
-	snapshotDir := getSnapshotDir(s.config.RootDir, s.config.GenesisFile.ChainID)
+	snapshotDir := s.getSnapshotDir()
 	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
 		return fmt.Errorf("error creating snapshot directory: %v", err)
 	}
@@ -215,8 +215,8 @@ func (s *Server) createSnapshot(logger *zap.Logger, height int64) error {
 	logger.Info("Writing snapshot metadata", zap.Int64("height", blockHeight))
 
 	b, err := json.Marshal(Metadata{
-		Sender:  s.config.ProposerAddress,
-		ChainID: s.config.GenesisFile.ChainID,
+		Sender:  s.config.OpenAudio.Operator.ProposerAddress,
+		ChainID: s.config.GenesisDoc.ChainID,
 	})
 	if err != nil {
 		return fmt.Errorf("error marshalling metadata: %v", err)
@@ -360,8 +360,8 @@ func (s *Server) deletePgDump(logger *zap.Logger, latestSnapshotDir string) erro
 // Prunes snapshots by deleting the oldest ones while retaining the most recent ones
 // based on the configured retention count
 func (s *Server) pruneSnapshots(logger *zap.Logger) error {
-	snapshotDir := getSnapshotDir(s.config.RootDir, s.config.GenesisFile.ChainID)
-	keep := s.config.StateSync.Keep
+	snapshotDir := s.getSnapshotDir()
+	keep := s.config.OpenAudio.Snapshot.Keep
 
 	files, err := os.ReadDir(snapshotDir)
 	if err != nil {
@@ -385,11 +385,11 @@ func (s *Server) pruneSnapshots(logger *zap.Logger) error {
 }
 
 func (s *Server) getStoredSnapshots() ([]v1.Snapshot, error) {
-	if !s.config.StateSync.ServeSnapshots {
+	if !s.config.OpenAudio.Snapshot.Serve {
 		return []v1.Snapshot{}, nil
 	}
 
-	snapshotDir := getSnapshotDir(s.config.RootDir, s.config.GenesisFile.ChainID)
+	snapshotDir := s.getSnapshotDir()
 
 	dirs, err := os.ReadDir(snapshotDir)
 	if err != nil {
@@ -435,7 +435,7 @@ func (s *Server) getStoredSnapshots() ([]v1.Snapshot, error) {
 
 // GetChunkByHeight retrieves a specific chunk for a given block height
 func (s *Server) GetChunkByHeight(height int64, chunk int) ([]byte, error) {
-	snapshotDir := getSnapshotDir(s.config.RootDir, s.config.GenesisFile.ChainID)
+	snapshotDir := s.getSnapshotDir()
 	latestSnapshotDir := getHeightDir(snapshotDir, height)
 
 	// Check if snapshot directory exists
@@ -467,7 +467,7 @@ func (s *Server) GetChunkByHeight(height int64, chunk int) ([]byte, error) {
 }
 
 func (s *Server) StoreOfferedSnapshot(snapshot *v1.Snapshot) error {
-	snapshotDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	snapshotDir := filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir)
 	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
 		return fmt.Errorf("failed to create snapshot directory: %v", err)
 	}
@@ -486,7 +486,7 @@ func (s *Server) StoreOfferedSnapshot(snapshot *v1.Snapshot) error {
 }
 
 func (s *Server) GetOfferedSnapshot() (*v1.Snapshot, error) {
-	snapshotDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	snapshotDir := filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir)
 	metadataPath := getMetadataPath(snapshotDir)
 	metadataBytes, err := os.ReadFile(metadataPath)
 	if err != nil {
@@ -504,7 +504,7 @@ func (s *Server) GetOfferedSnapshot() (*v1.Snapshot, error) {
 // StoreChunkForReconstruction stores a single chunk in a temporary directory for later reconstruction
 func (s *Server) StoreChunkForReconstruction(height int64, chunkIndex int, chunkData []byte) error {
 	// Create a temporary directory for reconstruction if it doesn't exist
-	tmpDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	tmpDir := filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir)
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return fmt.Errorf("failed to create temporary directory: %v", err)
 	}
@@ -525,7 +525,7 @@ func (s *Server) StoreChunkForReconstruction(height int64, chunkIndex int, chunk
 }
 
 func (s *Server) haveAllChunks(height uint64, total int) bool {
-	heightDir := getHeightDir(filepath.Join(s.config.RootDir, tmpReconstructionDir), int64(height))
+	heightDir := getHeightDir(filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir), int64(height))
 
 	// Use a map to track which chunks we have
 	chunks := make(map[int]bool, total)
@@ -557,7 +557,7 @@ func (s *Server) haveAllChunks(height uint64, total int) bool {
 
 // ReassemblePgDump reconstructs and decompresses a binary pg_dump file from multiple gzipped chunks
 func (s *Server) ReassemblePgDump(height int64) error {
-	tmpDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	tmpDir := filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir)
 	heightDir := getHeightDir(tmpDir, height)
 
 	// Create the output pg_dump file in binary format
@@ -608,12 +608,12 @@ func (s *Server) ReassemblePgDump(height int64) error {
 
 // RestoreDatabase restores the PostgreSQL database using the reassembled pg_dump binary file
 func (s *Server) RestoreDatabase(height int64) error {
-	tmpDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	tmpDir := filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir)
 	heightDir := getHeightDir(tmpDir, height)
 	dumpPath := getPgDumpPath(heightDir)
 
 	cmd := exec.Command("pg_restore",
-		"--dbname="+s.config.PSQLConn,
+		"--dbname="+s.config.OpenAudio.DB.PostgresDSN,
 		"--clean",
 		"--if-exists",
 		"--no-owner",
@@ -638,7 +638,7 @@ func (s *Server) RestoreDatabase(height int64) error {
 }
 
 func (s *Server) CleanupStateSync() error {
-	snapshotDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	snapshotDir := filepath.Join(s.config.OpenAudio.Home, tmpReconstructionDir)
 	if err := os.RemoveAll(snapshotDir); err != nil {
 		return fmt.Errorf("error cleaning up temporary files: %w", err)
 	}
@@ -652,7 +652,7 @@ func (s *Server) cacheSnapshots() error {
 	}
 
 	return upsertCache(s.cache.snapshotInfo, SnapshotInfoKey, func(snapshotInfo *corev1.GetStatusResponse_SnapshotInfo) *corev1.GetStatusResponse_SnapshotInfo {
-		snapshotInfo.Enabled = s.config.StateSync.ServeSnapshots
+		snapshotInfo.Enabled = s.config.OpenAudio.Snapshot.Serve
 
 		newSnapshots := make([]*corev1.SnapshotMetadata, 0, len(snapshots))
 		for _, snapshot := range snapshots {
@@ -660,7 +660,7 @@ func (s *Server) cacheSnapshots() error {
 				Height:     int64(snapshot.Height),
 				Hash:       hex.EncodeToString(snapshot.Hash),
 				ChunkCount: int64(snapshot.Chunks),
-				ChainId:    s.config.GenesisFile.ChainID,
+				ChainId:    s.config.GenesisDoc.ChainID,
 			})
 		}
 
