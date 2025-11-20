@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	validatorPurgeSLAInterval   int32 = 8
-	validatorPurgeMinValidators       = 50
+	validatorPurgeSLAInterval   = 8
+	validatorPurgeMinValidators = 50
 )
 
 func (s *Server) createRollupTx(ctx context.Context, ts time.Time, height int64) ([]byte, error) {
