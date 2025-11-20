@@ -479,9 +479,9 @@ func (s *Server) deregisterValidator(ctx context.Context, ethAddress string) {
 	peers := s.connectRPCPeers.ToMap()
 	for addr := range rendezvous {
 		if addr == s.config.WalletAddress {
-			deregCopy := dereg
+			deregCopy := proto.Clone(&dereg).(*corev1.ValidatorDeregistration)
 			resp, err := s.self.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
-				Deregistration: &deregCopy,
+				Deregistration: deregCopy,
 			}))
 			if err != nil {
 				s.logger.Error("failed to get deregistration attestation from peer", zap.String("peer_address", addr), zap.Error(err))
@@ -489,9 +489,9 @@ func (s *Server) deregisterValidator(ctx context.Context, ethAddress string) {
 			}
 			attestations = append(attestations, resp.Msg.Signature)
 		} else if peer, ok := peers[addr]; ok {
-			deregCopy := dereg
+			deregCopy := proto.Clone(&dereg).(*corev1.ValidatorDeregistration)
 			resp, err := peer.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
-				Deregistration: &deregCopy,
+				Deregistration: deregCopy,
 			}))
 			if err != nil {
 				s.logger.Error("failed to get deregistration attestation from peer", zap.String("peer_address", addr), zap.Error(err))

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	corev1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	ethv1 "github.com/OpenAudio/go-openaudio/pkg/api/eth/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/common"
@@ -48,8 +47,8 @@ func (s *Server) getSlashAttestation(ctx context.Context, slash *v1.SlashRecomme
 			history, err := s.db.GetValidatorHistoryForID(
 				ctx,
 				db.GetValidatorHistoryForIDParams{
-					ep.Id,
-					ep.ServiceType,
+					SpID:        ep.Id,
+					ServiceType: ep.ServiceType,
 				},
 			)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -97,7 +96,7 @@ func (s *Server) getSlashAttestation(ctx context.Context, slash *v1.SlashRecomme
 	return signature, nil
 }
 
-func SignSlashRecommendation(ethKey *ecdsa.PrivateKey, slash *corev1.SlashRecommendation) (string, error) {
+func SignSlashRecommendation(ethKey *ecdsa.PrivateKey, slash *v1.SlashRecommendation) (string, error) {
 	var signature string
 	if slash == nil {
 		return signature, errors.New("empty slash recommendation")
@@ -147,11 +146,11 @@ func (s *Server) gatherSlashAttestations(ctx context.Context, slash *v1.SlashRec
 	// Reuse registration rendezvous size from configuration
 	rendezvous := common.GetAttestorRendezvous(addrs, keyBytes, s.config.AttRegistrationRSize)
 	attestations := make(map[string]string, s.config.AttRegistrationRSize)
-	slashCopy := *slash
+	slashCopy := proto.Clone(slash).(*v1.SlashRecommendation)
 	for addr := range rendezvous {
 		if peer, ok := s.connectRPCPeers.Get(addr); ok {
-			resp, err := peer.GetSlashAttestation(ctx, connect.NewRequest(&corev1.GetSlashAttestationRequest{
-				Data: &slashCopy,
+			resp, err := peer.GetSlashAttestation(ctx, connect.NewRequest(&v1.GetSlashAttestationRequest{
+				Data: slashCopy,
 			}))
 			if err != nil {
 				s.logger.Error("failed to get slash attestation from peer", zap.String("peer_address", addr), zap.Error(err))
