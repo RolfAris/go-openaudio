@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,12 +20,9 @@ func TestEIP712(t *testing.T) {
 			Nonce:      "0x8172f237c0ff351c2478fbb8ac5a21c4aa179304f8550e782284828191adf142",
 		}
 
-		config := &config.Config{
-			AcdcChainID:              config.ProdAcdcChainID,
-			AcdcEntityManagerAddress: config.ProdAcdcAddress,
-		}
+		emAddr, emChainId := DeterministicEntityManagerAddressAndChainID("mainnet-alpha-beta")
 
-		address, _, err := RecoverPubkeyFromCoreTx(config, tx)
+		address, _, err := RecoverPubkeyFromCoreTx(emAddr, emChainId, tx)
 		require.Nil(t, err)
 		t.Logf("recovered address: %s", address)
 		require.Equal(t, "0x570d5bd4d4dbcc3f896ba095f4002a2545e5e5f6", strings.ToLower(address))
@@ -43,12 +39,9 @@ func TestEIP712(t *testing.T) {
 			Nonce:      "0x29a8bf36312f3aa4cf2257ceae6d2bb893f27d41372b763223ca9e7de93777d8",
 		}
 
-		config := &config.Config{
-			AcdcChainID:              config.StageAcdcChainID,
-			AcdcEntityManagerAddress: config.StageAcdcAddress,
-		}
+		emAddr, emChainId := DeterministicEntityManagerAddressAndChainID("audius-testnet-alpha")
 
-		address, _, err := RecoverPubkeyFromCoreTx(config, tx)
+		address, _, err := RecoverPubkeyFromCoreTx(emAddr, emChainId, tx)
 		require.Nil(t, err)
 		t.Logf("recovered address: %s", address)
 		require.Equal(t, "0x494388e8be6eb2af88ef0d999a07d9665bd00379", strings.ToLower(address))

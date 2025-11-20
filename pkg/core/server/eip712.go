@@ -2,19 +2,60 @@ package server
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math/big"
 	"strings"
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 )
 
-func InjectSigner(config *config.Config, em *v1.ManageEntityLegacy) error {
-	address, _, err := RecoverPubkeyFromCoreTx(config, em)
+const (
+	ProdRegistryAddress  = "0xd976d3b4f4e22a238c1A736b6612D22f17b6f64C"
+	StageRegistryAddress = "0xc682C2166E11690B64338e11633Cb8Bb60B0D9c0"
+	DevRegistryAddress   = "0xABbfF712977dB51f9f212B85e8A4904c818C2b63"
+
+	ProdAcdcAddress  = "0x1Cd8a543596D499B9b6E7a6eC15ECd2B7857Fd64"
+	StageAcdcAddress = "0x1Cd8a543596D499B9b6E7a6eC15ECd2B7857Fd64"
+	DevAcdcAddress   = "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B"
+
+	ProdAcdcChainID  = 31524
+	StageAcdcChainID = 1056801
+	DevAcdcChainID   = 1337
+)
+
+func DeterministicEntityManagerAddressAndChainID(chainID string) (string, uint64) {
+	switch chainID {
+	case "mainnet-alpha-beta":
+		return ProdAcdcAddress, ProdAcdcChainID
+	case "audius-testnet-alpha":
+		return StageAcdcAddress, StageAcdcChainID
+	case "openaudio-devnet":
+		return DevAcdcAddress, DevAcdcChainID
+	}
+
+	h := sha256.Sum256([]byte(chainID))
+
+	// Address
+	addrBytes := crypto.Keccak256(h[:])
+	address := fmt.Sprintf("0x%x", addrBytes[12:])
+
+	// Chain ID
+	v := new(big.Int).SetBytes(h[:])
+	space := big.NewInt(1_000_000_000)
+	mod := new(big.Int).Mod(v, space)
+	prefix := big.NewInt(440_000_000_000)
+	out := new(big.Int).Add(prefix, mod)
+
+	return address, out.Uint64()
+}
+
+func InjectSigner(entityManagerAddress string, chainId uint64, em *v1.ManageEntityLegacy) error {
+	address, _, err := RecoverPubkeyFromCoreTx(entityManagerAddress, chainId, em)
 	if err != nil {
 		return err
 	}
@@ -23,10 +64,7 @@ func InjectSigner(config *config.Config, em *v1.ManageEntityLegacy) error {
 	return nil
 }
 
-func RecoverPubkeyFromCoreTx(config *config.Config, em *v1.ManageEntityLegacy) (string, *ecdsa.PublicKey, error) {
-	contractAddress := config.AcdcEntityManagerAddress
-	chainId := config.AcdcChainID
-
+func RecoverPubkeyFromCoreTx(contractAddress string, chainId uint64, em *v1.ManageEntityLegacy) (string, *ecdsa.PublicKey, error) {
 	var nonce [32]byte
 	copy(nonce[:], toBytes(em.Nonce))
 
@@ -142,10 +180,7 @@ func recoverPublicKey(signature []byte, typedData apitypes.TypedData) ([]byte, e
 }
 
 // SignManageEntity creates an EIP712 signature for a ManageEntityLegacy message and sets it on the message
-func SignManageEntity(config *config.Config, em *v1.ManageEntityLegacy, privateKey *ecdsa.PrivateKey) error {
-	contractAddress := config.AcdcEntityManagerAddress
-	chainId := config.AcdcChainID
-
+func SignManageEntity(contractAddress string, chainId uint, em *v1.ManageEntityLegacy, privateKey *ecdsa.PrivateKey) error {
 	var nonce [32]byte
 	copy(nonce[:], toBytes(em.Nonce))
 

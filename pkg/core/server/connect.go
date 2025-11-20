@@ -66,10 +66,10 @@ func (c *CoreService) GetNodeInfo(ctx context.Context, req *connect.Request[v1.G
 	}
 
 	res := &v1.GetNodeInfoResponse{
-		Chainid:       c.core.config.GenesisFile.ChainID,
+		Chainid:       c.core.config.GenesisDoc.ChainID,
 		Synced:        status.Msg.SyncInfo.Synced,
-		CometAddress:  c.core.config.ProposerAddress,
-		EthAddress:    c.core.config.WalletAddress,
+		CometAddress:  c.core.config.OpenAudio.Operator.ProposerAddress,
+		EthAddress:    c.core.config.OpenAudio.Operator.EthAddress,
 		CurrentHeight: status.Msg.ChainInfo.CurrentHeight,
 	}
 	return connect.NewResponse(res), nil
@@ -77,21 +77,6 @@ func (c *CoreService) GetNodeInfo(ctx context.Context, req *connect.Request[v1.G
 
 // ForwardTransaction implements v1connect.CoreServiceHandler.
 func (c *CoreService) ForwardTransaction(ctx context.Context, req *connect.Request[v1.ForwardTransactionRequest]) (*connect.Response[v1.ForwardTransactionResponse], error) {
-	// Check feature flag for programmable distribution features
-	if c.core.config != nil && !c.core.config.ProgrammableDistributionEnabled {
-		// Check if transaction uses programmable distribution features
-		if req.Msg != nil && req.Msg.Transaction != nil && req.Msg.Transaction.GetFileUpload() != nil {
-			return nil, connect.NewError(connect.CodeUnimplemented, errors.New("programmable distribution is not enabled in this environment"))
-		}
-		if req.Msg != nil && req.Msg.Transactionv2 != nil && req.Msg.Transactionv2.Envelope != nil {
-			for _, msg := range req.Msg.Transactionv2.Envelope.Messages {
-				if msg != nil && msg.GetErn() != nil {
-					return nil, connect.NewError(connect.CodeUnimplemented, errors.New("programmable distribution is not enabled in this environment"))
-				}
-			}
-		}
-	}
-
 	// TODO: check signature from known node
 
 	// TODO: validate transaction in same way as send transaction
@@ -109,7 +94,8 @@ func (c *CoreService) ForwardTransaction(ctx context.Context, req *connect.Reque
 		tx := req.Msg.Transaction
 		em := tx.GetManageEntity()
 		if em != nil {
-			err := InjectSigner(c.core.config, em)
+			emAddr, emChainId := DeterministicEntityManagerAddressAndChainID(c.core.config.GenesisDoc.ChainID)
+			err := InjectSigner(emAddr, emChainId, em)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInvalidArgument, errors.Join(errors.New("signer not recoverable"), err))
 			}
@@ -119,15 +105,6 @@ func (c *CoreService) ForwardTransaction(ctx context.Context, req *connect.Reque
 			return nil, fmt.Errorf("could not marshal transaction: %v", marshalErr)
 		}
 		mempoolKey = common.ToTxHashFromBytes(txBytes)
-	}
-
-	if req.Msg.Transactionv2 != nil {
-		c.core.logger.Debug("received forwarded v2 tx", zap.Any("tx", req.Msg.Transactionv2))
-		if c.core.config.Environment != "dev" {
-			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("received forwarded v2 tx outside of dev"))
-		}
-	} else {
-		c.core.logger.Debug("received forwarded tx", zap.Any("tx", req.Msg.Transaction))
 	}
 
 	if c.core.rpc == nil {
@@ -169,7 +146,7 @@ func (c *CoreService) GetBlock(ctx context.Context, req *connect.Request[v1.GetB
 	if req.Msg.Height > currentHeight {
 		return connect.NewResponse(&v1.GetBlockResponse{
 			Block: &v1.Block{
-				ChainId: c.core.config.GenesisFile.ChainID,
+				ChainId: c.core.config.GenesisDoc.ChainID,
 				Height:  -1,
 			},
 		}), nil
@@ -200,7 +177,7 @@ func (c *CoreService) GetBlock(ctx context.Context, req *connect.Request[v1.GetB
 		res := &v1.Transaction{
 			Hash:        tx.TxHash,
 			BlockHash:   block.Hash,
-			ChainId:     c.core.config.GenesisFile.ChainID,
+			ChainId:     c.core.config.GenesisDoc.ChainID,
 			Height:      block.Height,
 			Timestamp:   timestamppb.New(block.CreatedAt.Time),
 			Transaction: &transaction,
@@ -210,7 +187,7 @@ func (c *CoreService) GetBlock(ctx context.Context, req *connect.Request[v1.GetB
 
 	res := &v1.Block{
 		Hash:         block.Hash,
-		ChainId:      c.core.config.GenesisFile.ChainID,
+		ChainId:      c.core.config.GenesisDoc.ChainID,
 		Proposer:     block.Proposer,
 		Height:       block.Height,
 		Transactions: sortTransactionResponse(txResponses),
@@ -251,7 +228,7 @@ func (c *CoreService) GetBlocks(ctx context.Context, req *connect.Request[v1.Get
 		if _, exists := blockMap[row.Height]; !exists {
 			blockMap[row.Height] = &v1.Block{
 				Hash:         row.BlockHash,
-				ChainId:      c.core.config.GenesisFile.ChainID,
+				ChainId:      c.core.config.GenesisDoc.ChainID,
 				Proposer:     row.Proposer,
 				Height:       row.Height,
 				Transactions: []*v1.Transaction{},
@@ -270,7 +247,7 @@ func (c *CoreService) GetBlocks(ctx context.Context, req *connect.Request[v1.Get
 			txResponse := &v1.Transaction{
 				Hash:        row.TxHash.String,
 				BlockHash:   row.BlockHash,
-				ChainId:     c.core.config.GenesisFile.ChainID,
+				ChainId:     c.core.config.GenesisDoc.ChainID,
 				Height:      row.Height,
 				Timestamp:   timestamppb.New(row.BlockCreatedAt.Time),
 				Transaction: &transaction,
@@ -352,7 +329,7 @@ func (c *CoreService) GetDeregistrationAttestation(ctx context.Context, req *con
 		c.core.logger.Error("could not marshal deregistration", zap.Error(err))
 		return nil, err
 	}
-	sig, err := common.EthSign(c.core.config.EthereumKey, deregBytes)
+	sig, err := common.EthSign(c.core.config.PrivKey, deregBytes)
 	if err != nil {
 		c.core.logger.Error("could not sign deregistration", zap.Error(err))
 		return nil, err
@@ -412,7 +389,7 @@ func (c *CoreService) GetRegistrationAttestation(ctx context.Context, req *conne
 		c.core.logger.Error("could not marshal registration", zap.Error(err))
 		return nil, err
 	}
-	sig, err := common.EthSign(c.core.config.EthereumKey, regBytes)
+	sig, err := common.EthSign(c.core.config.PrivKey, regBytes)
 	if err != nil {
 		c.core.logger.Error("could not sign registration", zap.Error(err))
 		return nil, err
@@ -449,7 +426,7 @@ func (c *CoreService) GetTransaction(ctx context.Context, req *connect.Request[v
 			Transaction: &v1.Transaction{
 				Hash:        txhash,
 				BlockHash:   block.Hash,
-				ChainId:     c.core.config.GenesisFile.ChainID,
+				ChainId:     c.core.config.GenesisDoc.ChainID,
 				Height:      block.Height,
 				Timestamp:   timestamppb.New(block.CreatedAt.Time),
 				Transaction: &v1Transaction,
@@ -468,7 +445,7 @@ func (c *CoreService) GetTransaction(ctx context.Context, req *connect.Request[v
 			Transaction: &v1.Transaction{
 				Hash:          txhash,
 				BlockHash:     block.Hash,
-				ChainId:       c.core.config.GenesisFile.ChainID,
+				ChainId:       c.core.config.GenesisDoc.ChainID,
 				Height:        block.Height,
 				Timestamp:     timestamppb.New(block.CreatedAt.Time),
 				Transaction:   &v1Transaction,
@@ -488,30 +465,10 @@ func (c *CoreService) Ping(context.Context, *connect.Request[v1.PingRequest]) (*
 
 // SendTransaction implements v1connect.CoreServiceHandler.
 func (c *CoreService) SendTransaction(ctx context.Context, req *connect.Request[v1.SendTransactionRequest]) (*connect.Response[v1.SendTransactionResponse], error) {
-	// Check feature flag for programmable distribution features
-	if !c.core.config.ProgrammableDistributionEnabled {
-		// Check if transaction uses programmable distribution features
-		if req.Msg != nil && req.Msg.Transaction != nil && req.Msg.Transaction.GetFileUpload() != nil {
-			return nil, connect.NewError(connect.CodeUnimplemented, errors.New("programmable distribution is not enabled in this environment"))
-		}
-		if req.Msg != nil && req.Msg.Transactionv2 != nil && req.Msg.Transactionv2.Envelope != nil {
-			for _, msg := range req.Msg.Transactionv2.Envelope.Messages {
-				if msg != nil && msg.GetErn() != nil {
-					return nil, connect.NewError(connect.CodeUnimplemented, errors.New("programmable distribution is not enabled in this environment"))
-				}
-			}
-		}
-	}
-
 	// TODO: do validation check
 	var txhash common.TxHash
 	var err error
 	if req.Msg.Transactionv2 != nil {
-		// add gate just for dev
-		if c.core.config.Environment != "dev" {
-			return nil, connect.NewError(connect.CodeUnimplemented, errors.New("tx v2 in development"))
-		}
-
 		// Use consistent hashing by marshaling to bytes first, matching abci.go behavior
 		txBytes, marshalErr := proto.Marshal(req.Msg.Transactionv2)
 		if marshalErr != nil {
@@ -527,7 +484,8 @@ func (c *CoreService) SendTransaction(ctx context.Context, req *connect.Request[
 		tx := req.Msg.Transaction
 		em := tx.GetManageEntity()
 		if em != nil {
-			err := InjectSigner(c.core.config, em)
+			emAddr, emChainId := DeterministicEntityManagerAddressAndChainID(c.core.config.GenesisDoc.ChainID)
+			err := InjectSigner(emAddr, emChainId, em)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInvalidArgument, errors.Join(errors.New("signer not recoverable"), err))
 			}
@@ -592,7 +550,7 @@ func (c *CoreService) SendTransaction(ctx context.Context, req *connect.Request[
 		if req.Msg.Transactionv2 != nil {
 			receipt = &v1beta1.TransactionReceipt{
 				EnvelopeInfo: &v1beta1.EnvelopeReceiptInfo{
-					ChainId:      c.core.config.GenesisFile.ChainID,
+					ChainId:      c.core.config.GenesisDoc.ChainID,
 					Expiration:   req.Msg.Transactionv2.Envelope.Header.Expiration,
 					Nonce:        req.Msg.Transactionv2.Envelope.Header.Nonce,
 					MessageCount: int32(len(req.Msg.Transactionv2.Envelope.Messages)),
@@ -601,7 +559,7 @@ func (c *CoreService) SendTransaction(ctx context.Context, req *connect.Request[
 				Height:          block.Height,
 				Timestamp:       block.CreatedAt.Time.Unix(),
 				Sender:          "", // TODO: get sender from transaction signature
-				Responder:       c.core.config.ProposerAddress,
+				Responder:       c.core.config.OpenAudio.Operator.ProposerAddress,
 				Proposer:        block.Proposer,
 				MessageReceipts: make([]*v1beta1.MessageReceipt, len(req.Msg.Transactionv2.Envelope.Messages)),
 			}
@@ -670,7 +628,7 @@ func (c *CoreService) SendTransaction(ctx context.Context, req *connect.Request[
 			Transaction: &v1.Transaction{
 				Hash:          txhash,
 				BlockHash:     block.Hash,
-				ChainId:       c.core.config.GenesisFile.ChainID,
+				ChainId:       c.core.config.GenesisDoc.ChainID,
 				Height:        block.Height,
 				Timestamp:     timestamppb.New(block.CreatedAt.Time),
 				Transaction:   req.Msg.Transaction,
@@ -696,7 +654,7 @@ func (c *CoreService) getBlockRpcFallback(ctx context.Context, height int64) (*c
 			// return block with -1 to indicate it doesn't exist yet
 			return connect.NewResponse(&v1.GetBlockResponse{
 				Block: &v1.Block{
-					ChainId:   c.core.config.GenesisFile.ChainID,
+					ChainId:   c.core.config.GenesisDoc.ChainID,
 					Height:    -1,
 					Timestamp: timestamppb.New(time.Now()),
 				},
@@ -716,7 +674,7 @@ func (c *CoreService) getBlockRpcFallback(ctx context.Context, height int64) (*c
 		txs = append(txs, &v1.Transaction{
 			Hash:        common.ToTxHashFromBytes(tx),
 			BlockHash:   block.BlockID.Hash.String(),
-			ChainId:     c.core.config.GenesisFile.ChainID,
+			ChainId:     c.core.config.GenesisDoc.ChainID,
 			Height:      block.Block.Height,
 			Timestamp:   timestamppb.New(block.Block.Time),
 			Transaction: &transaction,
@@ -728,7 +686,7 @@ func (c *CoreService) getBlockRpcFallback(ctx context.Context, height int64) (*c
 	res := &v1.GetBlockResponse{
 		Block: &v1.Block{
 			Hash:         block.BlockID.Hash.String(),
-			ChainId:      c.core.config.GenesisFile.ChainID,
+			ChainId:      c.core.config.GenesisDoc.ChainID,
 			Proposer:     block.Block.ProposerAddress.String(),
 			Height:       block.Block.Height,
 			Transactions: txs,
@@ -803,8 +761,8 @@ func (c *CoreService) GetStatus(ctx context.Context, _ *connect.Request[v1.GetSt
 	mempoolCacheState, _ := c.core.cache.mempoolCacheState.Get(ProcessStateMempoolCache)
 
 	// pruning state
-	pruningInfo.Enabled = !c.core.config.Archive
-	pruningInfo.RetainBlocks = c.core.config.RetainHeight
+	pruningInfo.Enabled = !c.core.config.OpenAudio.Pruning.Enabled
+	pruningInfo.RetainBlocks = c.core.config.OpenAudio.Pruning.RetainHeight
 	pruningInfo.LastSetRetainHeight = c.core.abciState.lastRetainHeight
 
 	if c.core.rpc != nil {
@@ -813,9 +771,9 @@ func (c *CoreService) GetStatus(ctx context.Context, _ *connect.Request[v1.GetSt
 			pruningInfo.EarliestHeight = status.SyncInfo.EarliestBlockHeight
 
 			// Calculate target retain height (what it should be)
-			if chainInfo != nil && !c.core.config.Archive {
+			if chainInfo != nil && !c.core.config.OpenAudio.Pruning.Enabled {
 				latestHeight := chainInfo.CurrentHeight
-				retainWindow := c.core.config.RetainHeight
+				retainWindow := c.core.config.OpenAudio.Pruning.RetainHeight
 				if latestHeight > retainWindow {
 					pruningInfo.TargetRetainHeight = latestHeight - retainWindow
 				}
@@ -960,7 +918,7 @@ func (c *CoreService) GetRewardAttestation(ctx context.Context, req *connect.Req
 	}
 
 	// Create a temporary RewardAttester for validation
-	attester := rewards.NewRewardAttester(c.core.config.EthereumKey, []rewards.Reward{reward})
+	attester := rewards.NewRewardAttester(c.core.config.PrivKey, []rewards.Reward{reward})
 
 	// Validate the claim
 	if err := attester.Validate(claim); err != nil {
@@ -1148,11 +1106,6 @@ func (c *CoreService) GetPIE(ctx context.Context, req *connect.Request[v1.GetPIE
 
 // GetStreamURLs implements v1connect.CoreServiceHandler.
 func (c *CoreService) GetStreamURLs(ctx context.Context, req *connect.Request[v1.GetStreamURLsRequest]) (*connect.Response[v1.GetStreamURLsResponse], error) {
-	// Check feature flag
-	if !c.core.config.ProgrammableDistributionEnabled {
-		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("programmable distribution is not enabled in this environment"))
-	}
-
 	// Validate request
 	if req.Msg.Signature == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("signature is required"))
@@ -1265,11 +1218,6 @@ func (c *CoreService) GetStreamURLs(ctx context.Context, req *connect.Request[v1
 
 // GetUploadByCID implements v1connect.CoreServiceHandler.
 func (c *CoreService) GetUploadByCID(ctx context.Context, req *connect.Request[v1.GetUploadByCIDRequest]) (*connect.Response[v1.GetUploadByCIDResponse], error) {
-	// Check feature flag
-	if !c.core.config.ProgrammableDistributionEnabled {
-		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("programmable distribution is not enabled in this environment"))
-	}
-
 	upload, err := c.core.db.GetCoreUpload(ctx, req.Msg.Cid)
 	if err != nil {
 		// Return exists=false if not found instead of error
@@ -1448,7 +1396,7 @@ func (c *CoreService) getResourceURLsFromReleaseTrack(ern *ddexv1beta1.NewReleas
 func (c *CoreService) generateStreamURL(cid string) string {
 	// Generate a time-limited signed URL for streaming
 	// Using mediorum's streaming endpoint
-	baseURL := fmt.Sprintf("%s/tracks/cidstream/%s", c.core.config.NodeEndpoint, cid)
+	baseURL := fmt.Sprintf("%s/tracks/cidstream/%s", c.core.config.OpenAudio.Operator.Endpoint, cid)
 
 	// Create signature data matching production format exactly
 	sigData := &signature.SignatureData{
@@ -1459,7 +1407,7 @@ func (c *CoreService) generateStreamURL(cid string) string {
 	}
 
 	// Generate the signature query string using mediorum's helper
-	sigQueryString, err := signature.GenerateQueryStringFromSignatureData(sigData, c.core.config.EthereumKey)
+	sigQueryString, err := signature.GenerateQueryStringFromSignatureData(sigData, c.core.config.PrivKey)
 	if err != nil {
 		c.core.logger.Error("failed to generate stream signature", zap.Error(err))
 		return ""
@@ -1496,7 +1444,7 @@ func (c *CoreService) generateStreamURLs(cid string) []string {
 					// Don't set ShouldCache - match production format
 				}
 
-				sigQueryString, err := signature.GenerateQueryStringFromSignatureData(sigData, c.core.config.EthereumKey)
+				sigQueryString, err := signature.GenerateQueryStringFromSignatureData(sigData, c.core.config.PrivKey)
 				if err != nil {
 					c.core.logger.Error("failed to generate stream signature for endpoint",
 						zap.String("endpoint", endpoint),
@@ -1533,7 +1481,7 @@ func (c *CoreService) GetSlashAttestation(ctx context.Context, req *connect.Requ
 	}
 	return connect.NewResponse(&v1.GetSlashAttestationResponse{
 		Signature: signature,
-		Endpoint:  c.core.config.NodeEndpoint,
+		Endpoint:  c.core.config.OpenAudio.Operator.Endpoint,
 	}), nil
 }
 
@@ -1579,7 +1527,7 @@ func (c *CoreService) GetRewardSenderAttestation(ctx context.Context, req *conne
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address not a validator"))
 	}
 
-	owner, attestation, err := rewards.GetCreateSenderAttestation(c.core.config.EthereumKey, &rewards.CreateSenderAttestationParams{
+	owner, attestation, err := rewards.GetCreateSenderAttestation(c.core.config.PrivKey, &rewards.CreateSenderAttestationParams{
 		NewSenderAddress:            address,
 		RewardsManagerAccountPubKey: rewardsManagerPubkey,
 	})
