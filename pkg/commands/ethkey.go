@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/OpenAudio/go-openaudio/pkg/common"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	cmtcrypto "github.com/cometbft/cometbft/crypto"
 	"github.com/cometbft/cometbft/crypto/secp256k1"
 	"github.com/cometbft/cometbft/privval"
@@ -71,8 +72,13 @@ openaudio import-eth-key --key 0xabc123... --home ~/.openaudio
 
 			pv.Save()
 
-			addr := ethcrypto.PubkeyToAddress(privECDSA.PublicKey)
-			cmd.Printf("Imported Ethereum key as validator key\nAddress: %s\nSaved to: %s\n", addr.Hex(), privValKeyFile)
+			// Add eth_address to priv_validator_key.json
+			if err := config.AddEthAddressToValidatorKey(privValKeyFile, pv); err != nil {
+				return fmt.Errorf("add eth address to validator key: %w", err)
+			}
+
+			addr := common.PubKeyToAddress(&privECDSA.PublicKey)
+			cmd.Printf("Imported Ethereum key as validator key\nAddress: %s\nSaved to: %s\n", addr, privValKeyFile)
 			return nil
 		},
 	}

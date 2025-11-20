@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/ecdsa"
 	"path/filepath"
 	"time"
 
@@ -48,8 +49,9 @@ const (
 
 // Root configuration for OpenAudio.
 type Config struct {
-	CometBFT  *cmcfg.Config    `mapstructure:",squash"`
-	OpenAudio *OpenAudioConfig `mapstructure:"openaudio"`
+	CometBFT  *cmcfg.Config     `mapstructure:",squash"`
+	OpenAudio *OpenAudioConfig  `mapstructure:"openaudio"`
+	PrivKey   *ecdsa.PrivateKey `mapstructure:"-"` // not exposed in config
 }
 
 func DefaultConfig() *Config {
@@ -173,7 +175,6 @@ func DefaultBlobConfig() *BlobConfig {
 type OperatorConfig struct {
 	Home     string `mapstructure:"home"`
 	Address  string `mapstructure:"address"`
-	PrivKey  string `mapstructure:"privkey"`
 	Endpoint string `mapstructure:"endpoint"`
 }
 

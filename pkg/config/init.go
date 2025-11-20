@@ -16,10 +16,11 @@ import (
 	"github.com/cometbft/cometbft/privval"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
+	ethcrypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 )
 
-// createNodeDirectories creates the necessary directories for a node.
+// CreateNodeDirectories creates the necessary directories for a node.
 func createNodeDirectories(rootDir string) error {
 	configDir := filepath.Join(rootDir, "config")
 	dataDir := filepath.Join(rootDir, "data")
@@ -57,6 +58,67 @@ func generateNodeKeys(privValKeyFile, privValStateFile, nodeKeyFile string) (*pr
 	return pv, nodeKey, nil
 }
 
+// ValidatorKeyJSON preserves the CometBFT structure with eth_address added at the top
+type ValidatorKeyJSON struct {
+	EthAddress string          `json:"eth_address"`
+	Address    string          `json:"address"`
+	PubKey     json.RawMessage `json:"pub_key"`
+	PrivKey    json.RawMessage `json:"priv_key"`
+}
+
+// AddEthAddressToValidatorKey adds an eth_address field at the top of priv_validator_key.json
+func AddEthAddressToValidatorKey(privValKeyFile string, pv *privval.FilePV) error {
+	// Get the public key to compute Ethereum address
+	pubKey, err := pv.GetPubKey()
+	if err != nil {
+		return fmt.Errorf("get pubkey: %w", err)
+	}
+
+	// Compute Ethereum address
+	pubKeyBytes := pubKey.Bytes()
+	ecdsaPubKey, err := ethcrypto.DecompressPubkey(pubKeyBytes)
+	if err != nil {
+		return fmt.Errorf("decompress pubkey: %w", err)
+	}
+	ethAddr := common.PubKeyToAddress(ecdsaPubKey)
+
+	// Read the original file to preserve the nested structure
+	originalData, err := os.ReadFile(privValKeyFile)
+	if err != nil {
+		return fmt.Errorf("read validator key file: %w", err)
+	}
+
+	// Parse the original to extract the properly formatted pub_key and priv_key
+	var original struct {
+		Address string          `json:"address"`
+		PubKey  json.RawMessage `json:"pub_key"`
+		PrivKey json.RawMessage `json:"priv_key"`
+	}
+	if err := json.Unmarshal(originalData, &original); err != nil {
+		return fmt.Errorf("unmarshal validator key: %w", err)
+	}
+
+	// Build the structure with eth_address at the top
+	keyJSON := ValidatorKeyJSON{
+		EthAddress: ethAddr,
+		Address:    original.Address,
+		PubKey:     original.PubKey,
+		PrivKey:    original.PrivKey,
+	}
+
+	// Marshal and write
+	data, err := json.MarshalIndent(keyJSON, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal validator key: %w", err)
+	}
+
+	if err := os.WriteFile(privValKeyFile, data, 0600); err != nil {
+		return fmt.Errorf("write validator key file: %w", err)
+	}
+
+	return nil
+}
+
 // InitNode initializes a new OpenAudio node at cfg.CometBFT.RootDir.
 // It creates CometBFT keys, a default genesis, and writes merged configuration.
 func InitNode(cfg *Config, preset string, ethKey string) error {
@@ -73,6 +135,11 @@ func InitNode(cfg *Config, preset string, ethKey string) error {
 	pv, _, err := generateNodeKeys(privValKeyFile, privValStateFile, nodeKeyFile)
 	if err != nil {
 		return err
+	}
+
+	// Add eth_address to priv_validator_key.json
+	if err := AddEthAddressToValidatorKey(privValKeyFile, pv); err != nil {
+		return fmt.Errorf("add eth address to validator key: %w", err)
 	}
 
 	genFile := cfg.CometBFT.GenesisFile()

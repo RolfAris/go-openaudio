@@ -110,6 +110,10 @@ func PrivKeyToAddress(privateKey *ecdsa.PrivateKey) string {
 	return address
 }
 
+func PubKeyToAddress(publicKey *ecdsa.PublicKey) string {
+	return crypto.PubkeyToAddress(*publicKey).Hex()
+}
+
 // for parity with the web3.js web3.utils.utf8ToHex() call
 func Utf8ToHex(s string) [32]byte {
 	hex := [32]byte{}

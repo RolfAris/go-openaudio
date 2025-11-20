@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -59,11 +58,8 @@ func Load(path string, home string) (*Config, error) {
 			return nil, fmt.Errorf("invalid secp256k1 privkey: %w", err)
 		}
 
-		addr := common.PrivKeyToAddress(ethKey)
-		privHex := hex.EncodeToString(crypto.FromECDSA(ethKey))
-
-		cfg.OpenAudio.Operator.Address = addr
-		cfg.OpenAudio.Operator.PrivKey = privHex
+		cfg.PrivKey = ethKey
+		cfg.OpenAudio.Operator.Address = common.PrivKeyToAddress(ethKey)
 	}
 
 	return cfg, nil
