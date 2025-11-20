@@ -52,8 +52,8 @@ ethstatus:
 		}
 	}
 
-	if s.isDevEnvironment() && !s.config.SkipEthRegistration {
-		s.logger.Info("running in dev, registering on ethereum")
+	if s.config.OpenAudio.Eth.AutoRegister {
+		s.logger.Info("auto registering on ethereum")
 		if err := s.registerSelfOnEth(ctx); err != nil {
 			s.logger.Error("error registering onto eth", zap.Error(err))
 			s.ErrorProcess(ProcessStateRegistryBridge, fmt.Sprintf("error registering onto eth: %v", err))
@@ -193,7 +193,7 @@ func (s *Server) RegisterSelf() error {
 		return nil
 	}
 
-	nodeEndpoint := s.config.NodeEndpoint
+	nodeEndpoint := s.config.OpenAudio.Operator.Endpoint
 
 	ep, err := s.eth.GetRegisteredEndpointInfo(
 		ctx,
@@ -205,7 +205,7 @@ func (s *Server) RegisterSelf() error {
 		var connectErr *connect.Error
 		if errors.As(err, &connectErr) {
 			if connectErr.Code() == connect.CodeNotFound {
-				s.logger.Info("node not registered on Ethereum", zap.String("address", s.config.WalletAddress), zap.String("endpoint", nodeEndpoint))
+				s.logger.Info("node not registered on Ethereum", zap.String("address", s.config.OpenAudio.Operator.EthAddress), zap.String("endpoint", nodeEndpoint))
 				s.logger.Info("continuing unregistered")
 				return nil
 			}
@@ -216,7 +216,7 @@ func (s *Server) RegisterSelf() error {
 	nodeRecord, err := s.db.GetNodeByEndpoint(ctx, nodeEndpoint)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.logger.Info("node not found on comet but found on eth, registering")
-		if err := s.registerSelfOnComet(ctx, geth.HexToAddress(s.config.WalletAddress), big.NewInt(ep.Msg.Se.BlockNumber), fmt.Sprint(ep.Msg.Se.Id)); err != nil {
+		if err := s.registerSelfOnComet(ctx, geth.HexToAddress(s.config.OpenAudio.Operator.EthAddress), big.NewInt(ep.Msg.Se.BlockNumber), fmt.Sprint(ep.Msg.Se.Id)); err != nil {
 			return fmt.Errorf("could not register on comet: %v", err)
 		}
 		return nil
@@ -224,22 +224,18 @@ func (s *Server) RegisterSelf() error {
 		return err
 	}
 
-	s.logger.Info("node registered on network", zap.String("eth_address", nodeRecord.EthAddress), zap.String("endpoint", nodeRecord.Endpoint), zap.String("env", s.config.Environment))
+	s.logger.Info("node registered on network", zap.String("eth_address", nodeRecord.EthAddress), zap.String("endpoint", nodeRecord.Endpoint), zap.String("chain_id", s.config.GenesisDoc.ChainID))
 	return nil
-}
-
-func (s *Server) isDevEnvironment() bool {
-	return s.config.Environment == "dev" || s.config.Environment == "sandbox"
 }
 
 func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet geth.Address, ethBlock *big.Int, spID string) error {
 	if res, err := s.eth.IsDuplicateDelegateWallet(
 		ctx,
-		connect.NewRequest(&ethv1.IsDuplicateDelegateWalletRequest{Wallet: s.config.WalletAddress}),
+		connect.NewRequest(&ethv1.IsDuplicateDelegateWalletRequest{Wallet: s.config.OpenAudio.Operator.EthAddress}),
 	); err != nil {
 		return fmt.Errorf("could not check for duplicate delegate wallet: %w", err)
 	} else if res.Msg.IsDuplicate {
-		s.logger.Error("node is a duplicate, not registering on comet", zap.String("wallet_address", s.config.WalletAddress))
+		s.logger.Error("node is a duplicate, not registering on comet", zap.String("wallet_address", s.config.OpenAudio.Operator.EthAddress))
 		return nil
 	}
 
@@ -247,10 +243,10 @@ func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet ge
 		return errors.New("aborting comet registration because node is still syncing")
 	}
 
-	genValidators := s.config.GenesisFile.Validators
+	genValidators := s.config.GenesisDoc.Validators
 	isGenValidator := false
 	for _, validator := range genValidators {
-		if validator.Address.String() == s.config.ProposerAddress {
+		if validator.Address.String() == s.config.OpenAudio.Operator.ProposerAddress {
 			isGenValidator = true
 			break
 		}
@@ -270,15 +266,16 @@ func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet ge
 	}
 	keyBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(keyBytes, ethBlock.Uint64())
-	rendezvous := common.GetAttestorRendezvous(addrs, keyBytes, s.config.AttRegistrationRSize)
+	validatorGenesisConfig := s.config.GenesisData.Validator
+	rendezvous := common.GetAttestorRendezvous(addrs, keyBytes, validatorGenesisConfig.AttRegistrationRSize)
 
-	attestations := make([]string, 0, s.config.AttRegistrationRSize)
+	attestations := make([]string, 0, validatorGenesisConfig.AttRegistrationRSize)
 	reg := &corev1.ValidatorRegistration{
-		CometAddress:   s.config.ProposerAddress,
-		PubKey:         s.config.CometKey.PubKey().Bytes(),
-		Power:          int64(s.config.ValidatorVotingPower),
+		CometAddress:   s.config.OpenAudio.Operator.ProposerAddress,
+		PubKey:         crypto.CompressPubkey(s.config.PubKey),
+		Power:          int64(validatorGenesisConfig.ValidatorVotingPower),
 		DelegateWallet: delegateOwnerWallet.Hex(),
-		Endpoint:       s.config.NodeEndpoint,
+		Endpoint:       s.config.OpenAudio.Operator.Endpoint,
 		NodeType:       common.HexToUtf8(serviceType),
 		EthBlock:       ethBlock.Int64(),
 		SpId:           spID,
@@ -288,11 +285,11 @@ func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet ge
 		if peer, ok := peers[addr]; ok {
 			resp, err := peer.GetRegistrationAttestation(ctx, connect.NewRequest(&corev1.GetRegistrationAttestationRequest{
 				Registration: &corev1.ValidatorRegistration{
-					CometAddress:   s.config.ProposerAddress,
-					PubKey:         s.config.CometKey.PubKey().Bytes(),
-					Power:          int64(s.config.ValidatorVotingPower),
+					CometAddress:   s.config.OpenAudio.Operator.ProposerAddress,
+					PubKey:         crypto.CompressPubkey(s.config.PubKey),
+					Power:          int64(validatorGenesisConfig.ValidatorVotingPower),
 					DelegateWallet: delegateOwnerWallet.Hex(),
-					Endpoint:       s.config.NodeEndpoint,
+					Endpoint:       s.config.OpenAudio.Operator.Endpoint,
 					NodeType:       common.HexToUtf8(serviceType),
 					EthBlock:       ethBlock.Int64(),
 					SpId:           spID,
@@ -317,7 +314,7 @@ func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet ge
 		return fmt.Errorf("failure to marshal register tx: %v", err)
 	}
 
-	sig, err := common.EthSign(s.config.EthereumKey, txBytes)
+	sig, err := common.EthSign(s.config.PrivKey, txBytes)
 	if err != nil {
 		return fmt.Errorf("could not sign register tx: %v", err)
 	}
@@ -339,7 +336,7 @@ func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet ge
 		return fmt.Errorf("send register tx failed: %v", err)
 	}
 
-	s.logger.Info("node registered", zap.String("endpoint", s.config.NodeEndpoint), zap.String("receipt", txhash.Msg.Transaction.Hash))
+	s.logger.Info("node registered", zap.String("endpoint", s.config.OpenAudio.Operator.Endpoint), zap.String("receipt", txhash.Msg.Transaction.Hash))
 
 	return nil
 }
@@ -365,7 +362,7 @@ func (s *Server) awaitNodeCatchup(ctx context.Context) error {
 }
 
 func (s *Server) isSelfAlreadyRegistered(ctx context.Context) bool {
-	res, err := s.db.GetNodeByEndpoint(ctx, s.config.NodeEndpoint)
+	res, err := s.db.GetNodeByEndpoint(ctx, s.config.OpenAudio.Operator.Endpoint)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false
@@ -377,7 +374,7 @@ func (s *Server) isSelfAlreadyRegistered(ctx context.Context) bool {
 	}
 
 	// return if owner wallets match
-	return res.EthAddress == s.config.WalletAddress
+	return res.EthAddress == s.config.OpenAudio.Operator.EthAddress
 }
 
 func (s *Server) IsNodeRegisteredOnEthereum(ctx context.Context, endpoint, delegateWallet string, ethBlock int64) (bool, error) {
@@ -407,20 +404,20 @@ func (s *Server) registerSelfOnEth(ctx context.Context) error {
 	if _, err := s.eth.GetRegisteredEndpointInfo(
 		ctx,
 		connect.NewRequest(&ethv1.GetRegisteredEndpointInfoRequest{
-			Endpoint: s.config.NodeEndpoint,
+			Endpoint: s.config.OpenAudio.Operator.Endpoint,
 		}),
 	); err != nil {
 		var connectErr *connect.Error
 		if errors.As(err, &connectErr) {
 			if connectErr.Code() == connect.CodeNotFound {
-				keyBytes := crypto.FromECDSA(s.config.EthereumKey)
+				keyBytes := crypto.FromECDSA(s.config.PrivKey)
 				keyHex := hex.EncodeToString(keyBytes)
 
 				if _, err := s.eth.Register(
 					ctx,
 					connect.NewRequest(&ethv1.RegisterRequest{
 						DelegateKey: keyHex,
-						Endpoint:    s.config.NodeEndpoint,
+						Endpoint:    s.config.OpenAudio.Operator.Endpoint,
 						ServiceType: "validator",
 					}),
 				); err != nil {
@@ -468,8 +465,9 @@ func (s *Server) deregisterValidator(ctx context.Context, ethAddress string) {
 		return
 	}
 	pubKey := ed25519.PubKey(pubkeyBytes)
-	rendezvous := common.GetAttestorRendezvous(filteredAddrs, pubKey.Bytes(), s.config.AttDeregistrationRSize)
-	attestations := make([]string, 0, s.config.AttRegistrationRSize)
+	validatorGenesisConfig := s.config.GenesisData.Validator
+	rendezvous := common.GetAttestorRendezvous(filteredAddrs, pubKey.Bytes(), validatorGenesisConfig.AttDeregistrationRSize)
+	attestations := make([]string, 0, validatorGenesisConfig.AttDeregistrationRSize)
 	dereg := corev1.ValidatorDeregistration{
 		CometAddress: node.CometAddress,
 		PubKey:       pubKey.Bytes(),
@@ -478,7 +476,7 @@ func (s *Server) deregisterValidator(ctx context.Context, ethAddress string) {
 
 	peers := s.connectRPCPeers.ToMap()
 	for addr := range rendezvous {
-		if addr == s.config.WalletAddress {
+		if addr == s.config.OpenAudio.Operator.EthAddress {
 			deregCopy := proto.Clone(&dereg).(*corev1.ValidatorDeregistration)
 			resp, err := s.self.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
 				Deregistration: deregCopy,
@@ -512,7 +510,7 @@ func (s *Server) deregisterValidator(ctx context.Context, ethAddress string) {
 		return
 	}
 
-	sig, err := common.EthSign(s.config.EthereumKey, txBytes)
+	sig, err := common.EthSign(s.config.PrivKey, txBytes)
 	if err != nil {
 		s.logger.Error("could not sign deregister tx", zap.Error(err))
 		return
@@ -536,5 +534,5 @@ func (s *Server) deregisterValidator(ctx context.Context, ethAddress string) {
 		return
 	}
 
-	s.logger.Info("deregistered validator", zap.String("endpoint", s.config.NodeEndpoint), zap.String("receipt", txhash.Msg.Transaction.Hash))
+	s.logger.Info("deregistered validator", zap.String("endpoint", s.config.OpenAudio.Operator.Endpoint), zap.String("receipt", txhash.Msg.Transaction.Hash))
 }

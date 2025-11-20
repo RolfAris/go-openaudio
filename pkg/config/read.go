@@ -53,6 +53,7 @@ func Load(path string, home string) (*Config, error) {
 	if _, err := os.Stat(keyPath); err == nil {
 		pvKey := cmprivval.LoadFilePV(keyPath, keyStatePath)
 		privKey := pvKey.Key.PrivKey
+		pubKey := pvKey.Key.PubKey
 
 		// Parse the secp256k1 key into go-ethereum format
 		ethKey, err := crypto.ToECDSA(privKey.Bytes())
@@ -60,7 +61,13 @@ func Load(path string, home string) (*Config, error) {
 			return nil, fmt.Errorf("invalid secp256k1 privkey: %w", err)
 		}
 
+		ethPubKey, err := crypto.DecompressPubkey(pubKey.Bytes())
+		if err != nil {
+			return nil, fmt.Errorf("invalid secp256k1 pubkey: %w", err)
+		}
+
 		cfg.PrivKey = ethKey
+		cfg.PubKey = ethPubKey
 		cfg.OpenAudio.Operator.EthAddress = common.PrivKeyToAddress(ethKey)
 		cfg.OpenAudio.Operator.ProposerAddress = pvKey.Key.Address.String()
 	}

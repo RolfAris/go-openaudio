@@ -53,6 +53,7 @@ type Config struct {
 	CometBFT    *cmcfg.Config     `mapstructure:",squash"`
 	OpenAudio   *OpenAudioConfig  `mapstructure:"openaudio"`
 	PrivKey     *ecdsa.PrivateKey `mapstructure:"-"` // not exposed in config
+	PubKey      *ecdsa.PublicKey  `mapstructure:"-"` // not exposed in config
 	GenesisDoc  *types.GenesisDoc `mapstructure:"-"` // not exposed in config
 	GenesisData *GenesisData      `mapstructure:"-"` // not exposed in config
 }
@@ -142,6 +143,7 @@ type EthConfig struct {
 	Home            string `mapstructure:"home"`
 	RpcURL          string `mapstructure:"rpcurl"`
 	RegistryAddress string `mapstructure:"registryaddress"`
+	AutoRegister    bool   `mapstructure:"auto_register"` // will automatically register on eth if true, must have $AUDIO to stake
 }
 
 func DefaultEthConfig() *EthConfig {
