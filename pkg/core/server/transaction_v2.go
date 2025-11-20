@@ -19,7 +19,7 @@ var (
 
 func (s *Server) validateV2Transaction(ctx context.Context, currentHeight int64, tx *v1beta1.Transaction) error {
 	header := tx.Envelope.Header
-	if header.ChainId != s.config.GenesisFile.ChainID {
+	if header.ChainId != s.config.GenesisDoc.ChainID {
 		return ErrV2TransactionInvalidChainID
 	}
 
@@ -59,7 +59,7 @@ func (s *Server) validateV2Transaction(ctx context.Context, currentHeight int64,
 
 func (s *Server) finalizeV2Transaction(ctx context.Context, req *abcitypes.FinalizeBlockRequest, tx *v1beta1.Transaction, txhash string) error {
 	header := tx.Envelope.Header
-	if header.ChainId != s.config.GenesisFile.ChainID {
+	if header.ChainId != s.config.GenesisDoc.ChainID {
 		return fmt.Errorf("invalid chain id: %s", header.ChainId)
 	}
 

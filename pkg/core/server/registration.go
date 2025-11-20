@@ -48,7 +48,7 @@ func (s *Server) isValidRegisterNodeAttestation(ctx context.Context, tx *v1.Sign
 	}
 
 	// validate voting power
-	if vr.GetPower() != int64(s.config.ValidatorVotingPower) {
+	if vr.GetPower() != int64(s.config.GenesisData.Validator.ValidatorVotingPower) {
 		return fmt.Errorf("invalid voting power '%d'", vr.GetPower())
 	}
 
@@ -74,7 +74,8 @@ func (s *Server) isValidRegisterNodeAttestation(ctx context.Context, tx *v1.Sign
 	// validate signers
 	keyBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(keyBytes, uint64(vr.GetEthBlock()))
-	enough, err := s.attestationHasEnoughSigners(ctx, signers, keyBytes, s.config.AttRegistrationRSize, s.config.AttRegistrationMin, "")
+	validatorGenesisConfig := s.config.GenesisData.Validator
+	enough, err := s.attestationHasEnoughSigners(ctx, signers, keyBytes, validatorGenesisConfig.AttRegistrationRSize, validatorGenesisConfig.AttRegistrationMin, "")
 	if err != nil {
 		return fmt.Errorf("error checking attestors against validators: %v", err)
 	} else if !enough {
@@ -152,7 +153,8 @@ func (s *Server) isValidDeregisterNodeAttestation(ctx context.Context, tx *v1.Si
 	}
 
 	// validate signers
-	enough, err := s.attestationHasEnoughSigners(ctx, signers, vdPubKey.Bytes(), s.config.AttDeregistrationRSize, s.config.AttDeregistrationMin, node.EthAddress)
+	validatorGenesisConfig := s.config.GenesisData.Validator
+	enough, err := s.attestationHasEnoughSigners(ctx, signers, vdPubKey.Bytes(), validatorGenesisConfig.AttDeregistrationRSize, validatorGenesisConfig.AttDeregistrationMin, node.EthAddress)
 	if err != nil {
 		return fmt.Errorf("error checking attestors against validators: %v", err)
 	} else if !enough {
@@ -246,7 +248,7 @@ func (s *Server) createDeregisterTransaction(address types.Address) ([]byte, err
 		return []byte{}, fmt.Errorf("failure to marshal deregister tx: %v", err)
 	}
 
-	sig, err := common.EthSign(s.config.EthereumKey, txBytes)
+	sig, err := common.EthSign(s.config.PrivKey, txBytes)
 	if err != nil {
 		return []byte{}, fmt.Errorf("could not sign deregister tx: %v", err)
 	}

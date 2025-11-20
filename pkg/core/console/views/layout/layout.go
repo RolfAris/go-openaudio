@@ -1,7 +1,7 @@
 package layout
 
 import (
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/OpenAudio/go-openaudio/pkg/core/console/views/components"
 )
 

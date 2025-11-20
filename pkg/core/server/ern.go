@@ -120,11 +120,6 @@ func getERNOAPMessageSender(msg *ddexv1beta1.NewReleaseMessage) string {
 
 // Validate an ERN message that's expected to be a NEW_MESSAGE, expects that the transaction header is valid
 func (s *Server) validateERNNewMessage(ctx context.Context, msg *ddexv1beta1.NewReleaseMessage) error {
-	// Check feature flag
-	if !s.config.ProgrammableDistributionEnabled {
-		return errors.New("programmable distribution is not enabled in this environment")
-	}
-
 	resourceList := msg.GetResourceList()
 	if resourceList == nil {
 		return nil
@@ -185,7 +180,7 @@ func (s *Server) finalizeERNNewMessage(ctx context.Context, req *abcitypes.Final
 		return fmt.Errorf("failed to decode txhash: %w", err)
 	}
 
-	chainID := s.config.GenesisFile.ChainID
+	chainID := s.config.GenesisDoc.ChainID
 
 	// Generate ERN address using message ID
 	messageID := ""

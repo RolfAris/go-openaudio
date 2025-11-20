@@ -247,7 +247,7 @@ func (s *Server) createSnapshot(logger *zap.Logger, height int64) error {
 
 // createPgDump creates a pg_dump of the database and writes it to the latest snapshot directory
 func (s *Server) createPgDump(logger *zap.Logger, latestSnapshotDir string) error {
-	pgString := s.config.PSQLConn
+	pgString := s.config.OpenAudio.DB.PostgresDSN
 	dumpPath := getPgDumpPath(latestSnapshotDir)
 
 	// You can customize this slice with the tables you want to dump

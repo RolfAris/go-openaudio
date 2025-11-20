@@ -7,7 +7,6 @@ import (
 	"connectrpc.com/connect"
 	corev1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	ethv1 "github.com/OpenAudio/go-openaudio/pkg/api/eth/v1"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/OpenAudio/go-openaudio/pkg/core/console/views/pages"
 	"github.com/OpenAudio/go-openaudio/pkg/core/db"
 	"github.com/OpenAudio/go-openaudio/pkg/core/server"
@@ -208,13 +207,14 @@ func (cs *Console) adjudicateFragment(c echo.Context) error {
 		MissedSLAs: int32(totalDeadSlas),
 		Amount:     slashAmount,
 	}
-	signature, err := server.SignSlashRecommendation(cs.config.EthereumKey, slashRecommendation)
+	signature, err := server.SignSlashRecommendation(cs.config.PrivKey, slashRecommendation)
 	if err != nil {
 		// log but don't fail to render
 		cs.logger.Error("Failed to sign active adjudication data")
 	}
 
-	slashAttestors := make(map[string]string, cs.config.AttRegistrationRSize)
+	attestationRSize := cs.config.GenesisData.Validator.AttRegistrationRSize
+	slashAttestors := make(map[string]string, attestationRSize)
 	if slashAmount > pages.UnearnedRewardsThreshold {
 		resp, err := cs.core.GetSlashAttestations(
 			ctx,
@@ -253,11 +253,11 @@ func (cs *Console) adjudicateFragment(c echo.Context) error {
 			Attestors: slashAttestors,
 		},
 		ActiveSlashProposalId: slashProposalId,
-		DashboardURL:          config.GetProtocolDashboardURL(),
+		DashboardURL:          "https://dashboard.audius.org",
 		ReportingEndpoint: &pages.Endpoint{
-			EthAddress:   cs.config.WalletAddress,
-			CometAddress: cs.config.ProposerAddress,
-			Endpoint:     cs.config.NodeEndpoint,
+			EthAddress:   cs.config.OpenAudio.Operator.EthAddress,
+			CometAddress: cs.config.OpenAudio.Operator.ProposerAddress,
+			Endpoint:     cs.config.OpenAudio.Operator.Endpoint,
 		},
 	}
 

@@ -1,12 +1,14 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/OpenAudio/go-openaudio/pkg/common"
 	cmprivval "github.com/cometbft/cometbft/privval"
+	"github.com/cometbft/cometbft/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/spf13/viper"
 )
@@ -59,7 +61,25 @@ func Load(path string, home string) (*Config, error) {
 		}
 
 		cfg.PrivKey = ethKey
-		cfg.OpenAudio.Operator.Address = common.PrivKeyToAddress(ethKey)
+		cfg.OpenAudio.Operator.EthAddress = common.PrivKeyToAddress(ethKey)
+		cfg.OpenAudio.Operator.ProposerAddress = pvKey.Key.Address.String()
+	}
+
+	// read in genesis doc
+	genFile := cfg.CometBFT.GenesisFile()
+	if data, err := os.ReadFile(genFile); err == nil {
+		genDoc, err := types.GenesisDocFromJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("invalid genesis doc: %w", err)
+		}
+		cfg.GenesisDoc = genDoc
+
+		// read in genesis app state
+		// TODO: add validation for genesis app hash and app state
+		state := genDoc.AppState
+		if err := json.Unmarshal(state, &cfg.GenesisData); err != nil {
+			return nil, fmt.Errorf("invalid genesis app state: %w", err)
+		}
 	}
 
 	return cfg, nil

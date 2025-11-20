@@ -6,6 +6,7 @@ import (
 	"time"
 
 	cmcfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/types"
 	"go.uber.org/zap"
 )
 
@@ -49,9 +50,11 @@ const (
 
 // Root configuration for OpenAudio.
 type Config struct {
-	CometBFT  *cmcfg.Config     `mapstructure:",squash"`
-	OpenAudio *OpenAudioConfig  `mapstructure:"openaudio"`
-	PrivKey   *ecdsa.PrivateKey `mapstructure:"-"` // not exposed in config
+	CometBFT    *cmcfg.Config     `mapstructure:",squash"`
+	OpenAudio   *OpenAudioConfig  `mapstructure:"openaudio"`
+	PrivKey     *ecdsa.PrivateKey `mapstructure:"-"` // not exposed in config
+	GenesisDoc  *types.GenesisDoc `mapstructure:"-"` // not exposed in config
+	GenesisData *GenesisData      `mapstructure:"-"` // not exposed in config
 }
 
 func DefaultConfig() *Config {
@@ -101,6 +104,8 @@ type OpenAudioConfig struct {
 	Blob     *BlobConfig     `mapstructure:"blob"`
 	Operator *OperatorConfig `mapstructure:"operator"`
 	Server   *ServerConfig   `mapstructure:"server"`
+	Snapshot *SnapshotConfig `mapstructure:"snapshot"`
+	Pruning  *PruningConfig  `mapstructure:"pruning"`
 }
 
 func DefaultOpenAudioConfig() *OpenAudioConfig {
@@ -114,6 +119,8 @@ func DefaultOpenAudioConfig() *OpenAudioConfig {
 		Blob:     DefaultBlobConfig(),
 		Operator: DefaultOperatorConfig(),
 		Server:   DefaultServerConfig(),
+		Snapshot: DefaultSnapshotConfig(),
+		Pruning:  DefaultPruningConfig(),
 	}
 }
 
@@ -146,14 +153,16 @@ func DefaultEthConfig() *EthConfig {
 }
 
 type DBConfig struct {
-	Home        string `mapstructure:"home"`
-	PostgresDSN string `mapstructure:"postgres_dsn"`
+	Home              string `mapstructure:"home"`
+	PostgresDSN       string `mapstructure:"postgres_dsn"`
+	RunDownMigrations bool   `mapstructure:"run_down_migrations"`
 }
 
 func DefaultDBConfig() *DBConfig {
 	return &DBConfig{
-		Home:        DefaultHomeDir,
-		PostgresDSN: DefaultPostgresDSN,
+		Home:              DefaultHomeDir,
+		PostgresDSN:       DefaultPostgresDSN,
+		RunDownMigrations: false,
 	}
 }
 
@@ -173,9 +182,10 @@ func DefaultBlobConfig() *BlobConfig {
 }
 
 type OperatorConfig struct {
-	Home     string `mapstructure:"home"`
-	Address  string `mapstructure:"address"`
-	Endpoint string `mapstructure:"endpoint"`
+	Home            string `mapstructure:"home"`
+	EthAddress      string `mapstructure:"eth_address"`
+	ProposerAddress string `mapstructure:"proposer_address"` // comet address of the proposer
+	Endpoint        string `mapstructure:"endpoint"`
 }
 
 func DefaultOperatorConfig() *OperatorConfig {
@@ -266,5 +276,33 @@ func DefaultEchoConfig() *EchoConfig {
 	return &EchoConfig{
 		IPRateLimit:    DefaultIPRateLimit,
 		RequestTimeout: DefaultRequestTimeout,
+	}
+}
+
+type SnapshotConfig struct {
+	Serve         bool  `mapstructure:"serve"`          // whether to serve snapshots to other nodes
+	Keep          int   `mapstructure:"keep"`           // number of snapshots to keep on disk
+	BlockInterval int64 `mapstructure:"block_interval"` // interval to save snapshots in blocks
+	ChunkFetchers int32 `mapstructure:"chunk_fetchers"` // number of chunk fetchers to use
+}
+
+func DefaultSnapshotConfig() *SnapshotConfig {
+	return &SnapshotConfig{
+		Serve:         true,
+		Keep:          6,
+		BlockInterval: 100,
+		ChunkFetchers: 10,
+	}
+}
+
+type PruningConfig struct {
+	Enabled      bool  `mapstructure:"enabled"`       // whether to enable pruning
+	RetainHeight int64 `mapstructure:"retain_height"` // how many blocks to keep in the block store
+}
+
+func DefaultPruningConfig() *PruningConfig {
+	return &PruningConfig{
+		Enabled:      true,
+		RetainHeight: 604800, // 1 week
 	}
 }

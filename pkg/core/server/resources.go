@@ -20,7 +20,7 @@ func (s *Server) refreshResourceStatus() error {
 		dbSize = -1
 	}
 
-	chainDir := s.cometbftConfig.RootDir
+	chainDir := s.config.CometBFT.RootDir
 	chainSize := int64(0)
 	err = filepath.Walk(chainDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
@@ -52,13 +52,13 @@ func (s *Server) refreshResourceStatus() error {
 	}
 	cpuUsage := int64(total / float64(len(cpuStat)))
 
-	diskStat, err := disk.Usage(s.config.RootDir)
+	diskStat, err := disk.Usage(s.config.CometBFT.RootDir)
 	if err != nil {
-		s.logger.Error("could not get disk info", zap.String("path", s.config.RootDir), zap.Error(err))
+		s.logger.Error("could not get disk info", zap.String("path", s.config.CometBFT.RootDir), zap.Error(err))
 	} else {
 		s.logger.Debug(
 			"disk stats",
-			zap.String("path", s.config.RootDir),
+			zap.String("path", s.config.CometBFT.RootDir),
 			zap.Uint64("used_GB", diskStat.Used/(1024*1024*1024)),
 			zap.Uint64("free_GB", diskStat.Free/(1024*1024*1024)),
 			zap.Uint64("total_GB", diskStat.Total/(1024*1024*1024)),

@@ -14,7 +14,7 @@ func (cs *Console) genesisPage(c echo.Context) error {
 		return cs.views.RenderGenesisView(c, cachedGenesis)
 	}
 
-	jsonData, err := json.Marshal(cs.config.GenesisFile)
+	jsonData, err := json.Marshal(cs.config.GenesisData)
 	if err != nil {
 		return fmt.Errorf("error marshalling to JSON: %v", err)
 	}

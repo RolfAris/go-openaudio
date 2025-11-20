@@ -32,10 +32,6 @@ var allowedMethods = map[string]struct{}{
 const maxRequestBodySize = 64 * 1024
 
 func (s *Server) proxyCometRequest(c echo.Context) error {
-	if !s.config.StateSync.ServeSnapshots {
-		return respondWithError(c, http.StatusForbidden, "state sync not enabled")
-	}
-
 	// Only allow GET and POST methods
 	if c.Request().Method != "GET" && c.Request().Method != "POST" {
 		return respondWithError(c, http.StatusMethodNotAllowed, "method not allowed")

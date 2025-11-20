@@ -68,7 +68,7 @@ func (s *Server) finalizeMEADNewMessage(ctx context.Context, req *abcitypes.Fina
 		return fmt.Errorf("invalid txhash: %w", err)
 	}
 	// the MEAD address is the location of the message on the chain
-	meadAddress := common.CreateAddress(txhashBytes, s.config.GenesisFile.ChainID, req.Height, messageIndex, "")
+	meadAddress := common.CreateAddress(txhashBytes, s.config.GenesisDoc.ChainID, req.Height, messageIndex, "")
 
 	rawMessage, err := proto.Marshal(mead)
 	if err != nil {

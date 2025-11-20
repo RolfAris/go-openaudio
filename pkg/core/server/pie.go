@@ -67,7 +67,7 @@ func (s *Server) finalizePIENewMessage(ctx context.Context, req *abcitypes.Final
 		return fmt.Errorf("invalid txhash: %w", err)
 	}
 	// the PIE address is the location of the message on the chain
-	pieAddress := common.CreateAddress(txhashBytes, s.config.GenesisFile.ChainID, req.Height, messageIndex, "")
+	pieAddress := common.CreateAddress(txhashBytes, s.config.GenesisDoc.ChainID, req.Height, messageIndex, "")
 
 	rawMessage, err := proto.Marshal(pie)
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
-	"github.com/OpenAudio/go-openaudio/pkg/core/console/views/sandbox"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -50,13 +49,10 @@ func (s *Server) startEchoServer(ctx context.Context) error {
 	g.Any("/crpc*", s.proxyCometRequest)
 	s.createEthRPC()
 
-	g.GET("/sdk", echo.WrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sandbox.ServeSandbox(s.config, w, r)
-	})))
-
 	done := make(chan error, 1)
 	go func() {
-		err := s.httpServer.Start(s.config.CoreServerAddr)
+		serverAddr := fmt.Sprintf("%s:%s", s.config.OpenAudio.Server.Hostname, s.config.OpenAudio.Server.Port)
+		err := s.httpServer.Start(serverAddr)
 		if err != nil && err != http.ErrServerClosed {
 			s.logger.Error("echo server error", zap.Error(err))
 			s.ErrorProcess(ProcessStateEchoServer, fmt.Sprintf("echo server error: %v", err))

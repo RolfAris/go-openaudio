@@ -88,7 +88,7 @@ func (s *Server) getSlashAttestation(ctx context.Context, slash *v1.SlashRecomme
 		return signature, errors.New("slash amounts do not match")
 	}
 
-	signature, err = SignSlashRecommendation(s.config.EthereumKey, slash)
+	signature, err = SignSlashRecommendation(s.config.PrivKey, slash)
 	if err != nil {
 		s.logger.Error("could not sign slash recommendation", zap.Error(err))
 		return signature, err
@@ -144,8 +144,9 @@ func (s *Server) gatherSlashAttestations(ctx context.Context, slash *v1.SlashRec
 	keyBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(keyBytes, uint64(slash.Amount))
 	// Reuse registration rendezvous size from configuration
-	rendezvous := common.GetAttestorRendezvous(addrs, keyBytes, s.config.AttRegistrationRSize)
-	attestations := make(map[string]string, s.config.AttRegistrationRSize)
+	validatorGenesisConfig := s.config.GenesisData.Validator
+	rendezvous := common.GetAttestorRendezvous(addrs, keyBytes, validatorGenesisConfig.AttRegistrationRSize)
+	attestations := make(map[string]string, validatorGenesisConfig.AttRegistrationRSize)
 	slashCopy := proto.Clone(slash).(*v1.SlashRecommendation)
 	for addr := range rendezvous {
 		if peer, ok := s.connectRPCPeers.Get(addr); ok {

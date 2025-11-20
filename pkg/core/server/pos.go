@@ -91,15 +91,15 @@ func (s *Server) sendPoSChallengeToStorage(blockHash []byte, blockHeight int64) 
 }
 
 func (s *Server) submitStorageProofTx(height int64, _ []byte, cid string, replicaAddresses []string, proof []byte) error {
-	proofSig, err := s.config.CometKey.Sign(proof)
+	proofSig, err := common.EthSign(s.config.PrivKey, proof)
 	if err != nil {
 		return fmt.Errorf("could not sign storage proof: %v", err)
 	}
 	proofTx := &v1.StorageProof{
 		Height:          height,
 		Cid:             cid,
-		Address:         s.config.ProposerAddress,
-		ProofSignature:  proofSig,
+		Address:         s.config.OpenAudio.Operator.EthAddress,
+		ProofSignature:  []byte(proofSig),
 		ProverAddresses: replicaAddresses,
 	}
 
@@ -108,7 +108,7 @@ func (s *Server) submitStorageProofTx(height int64, _ []byte, cid string, replic
 		return fmt.Errorf("failure to marshal proof tx: %v", err)
 	}
 
-	sig, err := common.EthSign(s.config.EthereumKey, txBytes)
+	sig, err := common.EthSign(s.config.PrivKey, txBytes)
 	if err != nil {
 		return fmt.Errorf("could not sign proof tx: %v", err)
 	}
@@ -151,7 +151,7 @@ func (s *Server) submitStorageProofVerificationTx(height int64, proof []byte) er
 		return fmt.Errorf("failure to marshal proof tx: %v", err)
 	}
 
-	sig, err := common.EthSign(s.config.EthereumKey, txBytes)
+	sig, err := common.EthSign(s.config.PrivKey, txBytes)
 	if err != nil {
 		return fmt.Errorf("could not sign proof tx: %v", err)
 	}

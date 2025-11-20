@@ -7,7 +7,7 @@ import (
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	corev1connect "github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/OpenAudio/go-openaudio/pkg/core/db"
 	"github.com/OpenAudio/go-openaudio/pkg/eth"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
@@ -15,7 +15,6 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/pubsub"
 	"github.com/OpenAudio/go-openaudio/pkg/rewards"
 	"github.com/OpenAudio/go-openaudio/pkg/safemap"
-	cconfig "github.com/cometbft/cometbft/config"
 	nm "github.com/cometbft/cometbft/node"
 	"github.com/cometbft/cometbft/rpc/client/local"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,12 +28,11 @@ import (
 type TransactionHashPubsub = pubsub.Pubsub[struct{}]
 
 type Server struct {
-	lc             *lifecycle.Lifecycle
-	config         *config.Config
-	cometbftConfig *cconfig.Config
-	logger         *zap.Logger
-	self           corev1connect.CoreServiceHandler
-	eth            *eth.EthService
+	lc     *lifecycle.Lifecycle
+	config *config.Config
+	logger *zap.Logger
+	self   corev1connect.CoreServiceHandler
+	eth    *eth.EthService
 
 	httpServer         *echo.Echo
 	grpcServer         *grpc.Server
@@ -64,9 +62,9 @@ type Server struct {
 	awaitEthReady        chan struct{}
 }
 
-func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.Config, logger *zap.Logger, pool *pgxpool.Pool, ethService *eth.EthService, posChannel chan pos.PoSRequest) (*Server, error) {
+func NewServer(lc *lifecycle.Lifecycle, config *config.Config, logger *zap.Logger, pool *pgxpool.Pool, ethService *eth.EthService, posChannel chan pos.PoSRequest) (*Server, error) {
 	// create mempool
-	mempl := NewMempool(logger, config, db.New(pool), cconfig.Mempool.Size)
+	mempl := NewMempool(logger, db.New(pool), config.CometBFT.Mempool.Size)
 
 	// create pubsubs
 	txPubsub := pubsub.NewPubsub[struct{}]()
@@ -81,11 +79,10 @@ func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.
 	coreLifecycle := lifecycle.NewFromLifecycle(lc, "core")
 
 	s := &Server{
-		lc:             coreLifecycle,
-		config:         config,
-		cometbftConfig: cconfig,
-		logger:         z,
-		eth:            ethService,
+		lc:     coreLifecycle,
+		config: config,
+		logger: z,
+		eth:    ethService,
 
 		pool:               pool,
 		mediorumPoSChannel: posChannel,
@@ -104,7 +101,8 @@ func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.
 		httpServer: httpServer,
 		grpcServer: grpcServer,
 
-		rewards: rewards.NewRewardAttester(config.EthereumKey, config.Rewards),
+		// TODO: add rewards to genesis data
+		rewards: rewards.NewRewardAttester(config.PrivKey, []rewards.Reward{}),
 
 		awaitHttpServerReady: make(chan struct{}),
 		awaitRpcReady:        make(chan struct{}),

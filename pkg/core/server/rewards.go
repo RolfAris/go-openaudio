@@ -208,7 +208,7 @@ func (s *Server) finalizeCreateReward(ctx context.Context, req *abcitypes.Finali
 	if err != nil {
 		return fmt.Errorf("invalid txhash: %w", err)
 	}
-	rewardAddress := common.CreateAddress(txhashBytes, s.config.GenesisFile.ChainID, req.Height, messageIndex, "")
+	rewardAddress := common.CreateAddress(txhashBytes, s.config.GenesisDoc.ChainID, req.Height, messageIndex, "")
 
 	// Convert claim authorities to string array
 	claimAuthorities := make([]string, len(createReward.ClaimAuthorities))

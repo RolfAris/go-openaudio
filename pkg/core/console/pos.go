@@ -20,7 +20,7 @@ func (cs *Console) posFragment(c echo.Context) error {
 	start, end := cs.getValidBlockRange(ctx, c.QueryParam("block_start"), c.QueryParam("block_end"))
 	address := c.Param("address")
 	if address == "" {
-		address = cs.config.ProposerAddress
+		address = cs.config.OpenAudio.Operator.ProposerAddress
 	}
 
 	proofs, err := cs.db.GetStorageProofsForNodeInRange(

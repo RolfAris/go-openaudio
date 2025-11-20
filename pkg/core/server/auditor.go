@@ -126,7 +126,7 @@ func (s *Server) shouldProposeNewRollup(ctx context.Context, height int64) bool 
 		previousHeight = latestRollup.BlockEnd
 	}
 	// Rollup interval excludes block at current height.
-	return height-1-previousHeight >= int64(s.config.SlaRollupInterval)
+	return height-1-previousHeight >= int64(s.config.GenesisData.Auditor.SlaRollupInterval)
 }
 
 func (s *Server) finalizeSlaRollup(ctx context.Context, event *v1.SignedTransaction, txHash string) (*v1.SlaRollup, error) {

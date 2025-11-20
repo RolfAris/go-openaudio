@@ -15,7 +15,6 @@ import (
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	corev1connect "github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1beta1"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/OpenAudio/go-openaudio/pkg/core/db"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
@@ -29,7 +28,6 @@ var (
 
 type Mempool struct {
 	logger *zap.Logger
-	config *config.Config
 
 	deque *list.List
 	txMap map[string]*list.Element
@@ -48,10 +46,9 @@ type MempoolTransaction struct {
 	Txv2     *v1beta1.Transaction
 }
 
-func NewMempool(logger *zap.Logger, config *config.Config, db *db.Queries, maxTransactions int) *Mempool {
+func NewMempool(logger *zap.Logger, db *db.Queries, maxTransactions int) *Mempool {
 	return &Mempool{
 		logger:                 logger.With(zap.String("service", "mempool")),
-		config:                 config,
 		deque:                  list.New(),
 		txMap:                  make(map[string]*list.Element),
 		db:                     db,
@@ -267,7 +264,7 @@ func (s *Server) startMempoolCache(ctx context.Context) error {
 				}
 
 				// Calculate theoretical max mempool size using actual config value
-				maxTxBytes := int64(s.cometbftConfig.Mempool.MaxTxBytes)
+				maxTxBytes := int64(s.config.CometBFT.Mempool.MaxTxBytes)
 				maxTxSize := maxTxCount * maxTxBytes
 
 				mempl.mutex.Unlock()

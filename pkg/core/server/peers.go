@@ -6,7 +6,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -91,53 +90,6 @@ func (s *Server) getRegisteredNodes(c echo.Context) error {
 				DelegateOwnerWallet: node.EthAddress,
 				CometAddress:        node.CometAddress,
 			})
-		}
-	}
-
-	if discoveryQuery {
-		res, err := queries.GetRegisteredNodesByType(ctx, common.HexToUtf8(contracts.DiscoveryNode))
-		if err != nil {
-			return fmt.Errorf("could not get discovery nodes: %v", err)
-		}
-		for _, node := range res {
-			isProd := s.config.Environment == "prod"
-			if isProd {
-				nodeFound := false
-				for _, nodeType := range legacyDiscoveryProviderProfile {
-					if nodeFound {
-						break
-					}
-					if strings.Contains(node.Endpoint, nodeType) {
-						nodeFound = true
-						break
-					}
-				}
-				if !nodeFound {
-					continue
-				}
-			}
-
-			spID, err := strconv.ParseUint(node.SpID, 10, 32)
-			if err != nil {
-				return fmt.Errorf("could not convert spid to int: %v", err)
-			}
-
-			ethBlock, err := strconv.ParseUint(node.EthBlock, 10, 32)
-			if err != nil {
-				return fmt.Errorf("could not convert ethblock to int: %v", err)
-			}
-
-			nodeResponse := &RegisteredNodeVerboseResponse{
-				Owner:               node.EthAddress,
-				Endpoint:            node.Endpoint,
-				SpID:                spID,
-				NodeType:            node.NodeType,
-				BlockNumber:         ethBlock,
-				DelegateOwnerWallet: node.EthAddress,
-				CometAddress:        node.CometAddress,
-			}
-
-			nodes = append(nodes, nodeResponse)
 		}
 	}
 
@@ -259,7 +211,7 @@ func (s *Server) refreshPeerData(ctx context.Context, _ *zap.Logger) error {
 	}
 
 	for _, validator := range validators {
-		self := s.config.WalletAddress
+		self := s.config.OpenAudio.Operator.EthAddress
 		if validator.EthAddress == self {
 			continue
 		}
@@ -287,7 +239,7 @@ func (s *Server) refreshConnectRPCPeers(ctx context.Context, _ *zap.Logger) erro
 
 	for _, validator := range validators {
 		ethAddress := validator.EthAddress
-		self := s.config.WalletAddress
+		self := s.config.OpenAudio.Operator.EthAddress
 		if ethAddress == self {
 			continue
 		}
@@ -325,7 +277,7 @@ func (s *Server) refreshCometRPCPeers(ctx context.Context, logger *zap.Logger) e
 
 	for _, validator := range validators {
 		ethAddress := validator.EthAddress
-		self := s.config.WalletAddress
+		self := s.config.OpenAudio.Operator.EthAddress
 		if ethAddress == self {
 			continue
 		}
@@ -368,7 +320,7 @@ func (s *Server) refreshPeerHealth(ctx context.Context, logger *zap.Logger) erro
 		go func(ethaddress EthAddress, rpc v1connect.CoreServiceClient) {
 			defer wg.Done()
 
-			self := s.config.WalletAddress
+			self := s.config.OpenAudio.Operator.EthAddress
 			if ethaddress == self {
 				return
 			}
@@ -391,33 +343,4 @@ func (s *Server) refreshPeerHealth(ctx context.Context, logger *zap.Logger) erro
 	wg.Wait()
 
 	return nil
-}
-
-func (s *Server) isNonRoutableAddress(listenAddr string) bool {
-	host, _, err := net.SplitHostPort(listenAddr)
-	if err != nil {
-		return true // If we can't parse it, treat as non-routable
-	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		// Could be a hostname, but check for localhost
-		if host == "localhost" {
-			return true
-		}
-		// Allow container names and other hostnames in Docker/k8s environments
-		return false
-	}
-
-	// Always block truly non-routable addresses
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
-		return true
-	}
-
-	// In production, also block private IPs - in dev/test, allow them for Docker
-	if s.config.Environment != "dev" && ip.IsPrivate() {
-		return true
-	}
-
-	return false
 }

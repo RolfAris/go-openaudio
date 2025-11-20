@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/OpenAudio/go-openaudio/pkg/core/console/views"
 	"github.com/OpenAudio/go-openaudio/pkg/core/console/views/layout"
 	"github.com/OpenAudio/go-openaudio/pkg/core/db"
@@ -32,7 +32,7 @@ type Console struct {
 func NewConsole(config *config.Config, logger *zap.Logger, e *echo.Echo, pool *pgxpool.Pool, ethService *eth.EthService, coreService v1connect.CoreServiceHandler) (*Console, error) {
 	l := logger.With(zap.String("service", "console"))
 	db := db.New(pool)
-	httprpc, err := rpchttp.New(config.RPCladdr)
+	httprpc, err := rpchttp.New(config.CometBFT.RPC.ListenAddress)
 	if err != nil {
 		return nil, fmt.Errorf("could not create rpc client: %v", err)
 	}

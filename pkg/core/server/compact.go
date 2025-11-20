@@ -8,13 +8,13 @@ import (
 )
 
 func (s *Server) CompactStateDB() error {
-	dbBase := s.cometbftConfig.BaseConfig.DBDir()
+	dbBase := s.config.CometBFT.BaseConfig.DBDir()
 	pebbleStatePath := dbBase + "/state.db"
 	return s.compactDB(pebbleStatePath)
 }
 
 func (s *Server) CompactBlockstoreDB() error {
-	dbBase := s.cometbftConfig.BaseConfig.DBDir()
+	dbBase := s.config.CometBFT.BaseConfig.DBDir()
 	pebbleBlockstorePath := dbBase + "/blockstore.db"
 	return s.compactDB(pebbleBlockstorePath)
 }

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
 	"github.com/cometbft/cometbft/types"
 	"github.com/maypok86/otter"
@@ -167,16 +167,16 @@ func (c *Cache) initCaches(config *config.Config) error {
 	})
 
 	c.nodeInfo = initCache(NodeInfoKey, &v1.GetStatusResponse_NodeInfo{
-		Endpoint:     config.NodeEndpoint,
-		CometAddress: strings.ToLower(config.ProposerAddress),
-		EthAddress:   strings.ToLower(config.WalletAddress),
+		Endpoint:     config.OpenAudio.Operator.Endpoint,
+		CometAddress: strings.ToLower(config.OpenAudio.Operator.ProposerAddress),
+		EthAddress:   strings.ToLower(config.OpenAudio.Operator.EthAddress),
 		NodeType:     "validator",
 	})
 
 	c.peers = initCache(PeersKey, &v1.GetStatusResponse_PeerInfo{})
 
 	c.chainInfo = initCache(ChainInfoKey, &v1.GetStatusResponse_ChainInfo{
-		ChainId: config.GenesisFile.ChainID,
+		ChainId: config.GenesisDoc.ChainID,
 	})
 
 	defaultSyncInfo := &v1.GetStatusResponse_SyncInfo{

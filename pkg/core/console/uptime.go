@@ -29,7 +29,7 @@ func (cs *Console) uptimeFragment(c echo.Context) error {
 	endpointURL := c.Param("endpoint")
 	rollupBlockEnd := c.Param("rollup")
 	if endpointURL == "" {
-		endpointURL = cs.config.NodeEndpoint
+		endpointURL = cs.config.OpenAudio.Operator.Endpoint
 	} else {
 		endpointURL = fmt.Sprintf("https://%s", endpointURL)
 	}

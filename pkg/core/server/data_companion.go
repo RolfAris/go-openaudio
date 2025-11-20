@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/cometbft/cometbft/rpc/grpc/client/privileged"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
@@ -20,8 +19,8 @@ import (
 //   - Otherwise, use the configured retain window: latestHeight - retainWindow.
 //   - Retain height only moves forward (monotonic); return 0 if it wouldn't advance.
 func (s *Server) calculateLowestRetainHeight(ctx context.Context) int64 {
-	if s.config.Archive {
-		return 0 // Archive nodes keep every block forever
+	if !s.config.OpenAudio.Pruning.Enabled {
+		return 0 // Pruning is disabled
 	}
 
 	latestBlock, err := s.db.GetLatestBlock(ctx)
@@ -49,7 +48,7 @@ func (s *Server) calculateLowestRetainHeight(ctx context.Context) int64 {
 	//
 	// This means: prune everything below 750, but keep 750..latest.
 	// That way, snapshot at 850 is still fully verifiable.
-	if s.config.StateSync.ServeSnapshots {
+	if s.config.OpenAudio.Snapshot.Serve {
 		if si, ok := s.cache.snapshotInfo.Get(SnapshotInfoKey); ok && len(si.Snapshots) > 0 {
 			const safetyBuffer int64 = 100
 
@@ -81,7 +80,7 @@ func (s *Server) calculateLowestRetainHeight(ctx context.Context) int64 {
 	//   => retain height = 800
 	//
 	// This means: prune everything below 800, keep 800..latest.
-	retainWindow := s.config.RetainHeight
+	retainWindow := s.config.OpenAudio.Pruning.RetainHeight
 	if retainWindow <= 0 || latestHeight <= retainWindow {
 		return 0 // invalid config or chain too short to prune
 	}
@@ -96,7 +95,7 @@ func (s *Server) calculateLowestRetainHeight(ctx context.Context) int64 {
 func (s *Server) startDataCompanion(ctx context.Context) error {
 	s.StartProcess(ProcessStateDataCompanion)
 
-	if s.config.Archive {
+	if !s.config.OpenAudio.Pruning.Enabled {
 		s.CompleteProcess(ProcessStateDataCompanion)
 		return nil
 	}
@@ -129,10 +128,11 @@ func (s *Server) manageBlockRetention(ctx context.Context) {
 	s.RunningProcessWithMetadata(ProcessStateDataCompanion, "Managing block retention")
 
 	// Create fresh connection each cycle to diagnose issues
-	conn, err := privileged.New(ctx, config.PrivilegedServiceSocketURI, privileged.WithPruningServiceEnabled(true), privileged.WithInsecure())
+	privilegedServiceSocketURI := s.config.CometBFT.GRPC.Privileged.ListenAddress
+	conn, err := privileged.New(ctx, privilegedServiceSocketURI, privileged.WithPruningServiceEnabled(true), privileged.WithInsecure())
 	if err != nil {
 		s.logger.Error("dc could not connect to privileged socket",
-			zap.String("socket", config.PrivilegedServiceSocketURI),
+			zap.String("socket", privilegedServiceSocketURI),
 			zap.Error(err))
 		s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting after connection error")
 		return
@@ -142,7 +142,7 @@ func (s *Server) manageBlockRetention(ctx context.Context) {
 	blockRetainHeight, err := conn.GetBlockRetainHeight(ctx)
 	if err != nil {
 		s.logger.Error("dc could not get block retain height",
-			zap.String("socket", config.PrivilegedServiceSocketURI),
+			zap.String("socket", privilegedServiceSocketURI),
 			zap.Error(err))
 		s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting after error")
 		return
