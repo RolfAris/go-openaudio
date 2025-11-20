@@ -3,7 +3,7 @@ modules:
   - path: proto
     name: buf.build/openaudio/protocol
 deps:
-  - buf.build/googleapis/googleapis
+  - buf.build/openaudio/ddex:v0.10.0
 lint:
   use:
     - DEFAULT
