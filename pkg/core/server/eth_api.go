@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"net/http"
 
-	"github.com/OpenAudio/go-openaudio/pkg/core/config"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/jackc/pgx/v5"
@@ -16,32 +15,29 @@ import (
 
 type EthAPI struct {
 	server *Server
-	vars   *config.SandboxVars
 }
 type NetAPI struct {
 	server *Server
-	vars   *config.SandboxVars
 }
 type Web3API struct {
 	server *Server
-	vars   *config.SandboxVars
 }
 
 func (s *Server) createEthRPC() error {
 	ethRpc := rpc.NewServer()
 
 	// Register the "eth" namespace
-	if err := ethRpc.RegisterName("eth", &EthAPI{server: s, vars: s.config.NewSandboxVars()}); err != nil {
+	if err := ethRpc.RegisterName("eth", &EthAPI{server: s}); err != nil {
 		return fmt.Errorf("failed to register eth rpc: %v", err)
 	}
 
 	// Register the "net" namespace
-	if err := ethRpc.RegisterName("net", &NetAPI{server: s, vars: s.config.NewSandboxVars()}); err != nil {
+	if err := ethRpc.RegisterName("net", &NetAPI{server: s}); err != nil {
 		return fmt.Errorf("failed to register net rpc: %v", err)
 	}
 
 	// Register the "web3" namespace
-	if err := ethRpc.RegisterName("web3", &Web3API{server: s, vars: s.config.NewSandboxVars()}); err != nil {
+	if err := ethRpc.RegisterName("web3", &Web3API{server: s}); err != nil {
 		return fmt.Errorf("failed to register web3 rpc: %v", err)
 	}
 
@@ -66,17 +62,19 @@ func (s *Server) createEthRPC() error {
 
 // net_version
 func (api *NetAPI) Version(ctx context.Context) (string, error) {
-	return fmt.Sprint(api.vars.EthChainID), nil
+	_, chainId := DeterministicEntityManagerAddressAndChainID(api.server.config.GenesisDoc.ChainID)
+	return fmt.Sprint(chainId), nil
 }
 
 // Stub: web3_clientVersion
 func (api *Web3API) ClientVersion(ctx context.Context) (string, error) {
-	return "AudiusdERPC/v1.0.0", nil
+	return "OpenAudioERPC/v1.0.0", nil
 }
 
 // eth_chainId
 func (api *EthAPI) ChainId(ctx context.Context) (*hexutil.Big, error) {
-	return (*hexutil.Big)(big.NewInt(int64(api.vars.EthChainID))), nil
+	_, chainId := DeterministicEntityManagerAddressAndChainID(api.server.config.GenesisDoc.ChainID)
+	return (*hexutil.Big)(new(big.Int).SetUint64(chainId)), nil
 }
 
 // eth_blockNumber
