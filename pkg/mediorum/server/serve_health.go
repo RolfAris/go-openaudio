@@ -23,47 +23,41 @@ type HealthCheckResponse struct {
 }
 
 type HealthCheckResponseData struct {
-	Healthy                   bool                       `json:"healthy"`
-	Version                   string                     `json:"version"`
-	Service                   string                     `json:"service"` // used by registerWithDelegate()
-	IsSeeding                 bool                       `json:"isSeeding"`
-	IsAudiusdManaged          bool                       `json:"isAudiusdManaged"`
-	BuiltAt                   string                     `json:"builtAt"`
-	StartedAt                 time.Time                  `json:"startedAt"`
-	SPID                      int                        `json:"spID"`
-	SPOwnerWallet             string                     `json:"spOwnerWallet"`
-	Git                       string                     `json:"git"`
-	AudiusDockerCompose       string                     `json:"audiusDockerCompose"`
-	MediorumPathUsed          uint64                     `json:"mediorumPathUsed"`   // bytes
-	MediorumPathSize          uint64                     `json:"mediorumPathSize"`   // bytes
-	StorageExpectation        uint64                     `json:"storageExpectation"` // bytes
-	DatabaseSize              uint64                     `json:"databaseSize"`       // bytes
-	DbSizeErr                 string                     `json:"dbSizeErr"`
-	LastSuccessfulRepair      RepairTracker              `json:"lastSuccessfulRepair"`
-	LastSuccessfulCleanup     RepairTracker              `json:"lastSuccessfulCleanup"`
-	UploadsCount              int64                      `json:"uploadsCount"`
-	UploadsCountErr           string                     `json:"uploadsCountErr"`
-	AutoUpgradeEnabled        bool                       `json:"autoUpgradeEnabled"`
-	TrustedNotifier           *ethcontracts.NotifierInfo `json:"trustedNotifier"`
-	Env                       string                     `json:"env"`
-	Self                      registrar.Peer             `json:"self"`
-	WalletIsRegistered        bool                       `json:"wallet_is_registered"`
-	Signers                   []registrar.Peer           `json:"signers"`
-	ReplicationFactor         int                        `json:"replicationFactor"`
-	Dir                       string                     `json:"dir"`
-	BlobStorePrefix           string                     `json:"blobStorePrefix"`
-	MoveFromBlobStorePrefix   string                     `json:"moveFromBlobStorePrefix"`
-	ListenPort                string                     `json:"listenPort"`
-	TrustedNotifierID         int                        `json:"trustedNotifierId"`
-	PeerHealths               map[string]*PeerHealth     `json:"peerHealths"`
-	UnreachablePeers          []string                   `json:"unreachablePeers"`
-	FailsPeerReachability     bool                       `json:"failsPeerReachability"`
-	StoreAll                  bool                       `json:"storeAll"`
-	IsDbLocalhost             bool                       `json:"isDbLocalhost"`
-	DiskHasSpace              bool                       `json:"diskHasSpace"`
-	IsDiscoveryListensEnabled bool                       `json:"isDiscoveryListensEnabled"`
-	TranscodeQueueLength      int                        `json:"transcodeQueueLength"`
-	TranscodeStats            *TranscodeStats            `json:"transcodeStats"`
+	Healthy                 bool                       `json:"healthy"`
+	Version                 string                     `json:"version"`
+	Service                 string                     `json:"service"` // used by registerWithDelegate()
+	IsSeeding               bool                       `json:"isSeeding"`
+	BuiltAt                 string                     `json:"builtAt"`
+	StartedAt               time.Time                  `json:"startedAt"`
+	SPID                    int                        `json:"spID"`
+	SPOwnerWallet           string                     `json:"spOwnerWallet"`
+	Git                     string                     `json:"git"`
+	MediorumPathUsed        uint64                     `json:"mediorumPathUsed"`   // bytes
+	MediorumPathSize        uint64                     `json:"mediorumPathSize"`   // bytes
+	StorageExpectation      uint64                     `json:"storageExpectation"` // bytes
+	DatabaseSize            uint64                     `json:"databaseSize"`       // bytes
+	DbSizeErr               string                     `json:"dbSizeErr"`
+	LastSuccessfulRepair    RepairTracker              `json:"lastSuccessfulRepair"`
+	LastSuccessfulCleanup   RepairTracker              `json:"lastSuccessfulCleanup"`
+	UploadsCount            int64                      `json:"uploadsCount"`
+	UploadsCountErr         string                     `json:"uploadsCountErr"`
+	TrustedNotifier         *ethcontracts.NotifierInfo `json:"trustedNotifier"`
+	Env                     string                     `json:"env"`
+	Self                    registrar.Peer             `json:"self"`
+	WalletIsRegistered      bool                       `json:"wallet_is_registered"`
+	Signers                 []registrar.Peer           `json:"signers"`
+	ReplicationFactor       int                        `json:"replicationFactor"`
+	Dir                     string                     `json:"dir"`
+	BlobStorePrefix         string                     `json:"blobStorePrefix"`
+	MoveFromBlobStorePrefix string                     `json:"moveFromBlobStorePrefix"`
+	ListenPort              string                     `json:"listenPort"`
+	PeerHealths             map[string]*PeerHealth     `json:"peerHealths"`
+	UnreachablePeers        []string                   `json:"unreachablePeers"`
+	FailsPeerReachability   bool                       `json:"failsPeerReachability"`
+	StoreAll                bool                       `json:"storeAll"`
+	DiskHasSpace            bool                       `json:"diskHasSpace"`
+	TranscodeQueueLength    int                        `json:"transcodeQueueLength"`
+	TranscodeStats          *TranscodeStats            `json:"transcodeStats"`
 }
 
 func (ss *MediorumServer) serveHealthCheck(c echo.Context) error {
@@ -74,11 +68,11 @@ func (ss *MediorumServer) serveHealthCheck(c echo.Context) error {
 		healthy = false
 	}
 
-	blobStorePrefix, _, foundBlobStore := strings.Cut(ss.Config.BlobStoreDSN, "://")
+	blobStorePrefix, _, foundBlobStore := strings.Cut(ss.Config.OpenAudio.Blob.BlobStoreDSN, "://")
 	if !foundBlobStore {
 		blobStorePrefix = ""
 	}
-	blobStoreMoveFromPrefix, _, foundBlobStoreMoveFrom := strings.Cut(ss.Config.MoveFromBlobStoreDSN, "://")
+	blobStoreMoveFromPrefix, _, foundBlobStoreMoveFrom := strings.Cut(ss.Config.OpenAudio.Blob.MoveFromBlobStoreDSN, "://")
 	if !foundBlobStoreMoveFrom {
 		blobStoreMoveFromPrefix = ""
 	}
@@ -89,47 +83,41 @@ func (ss *MediorumServer) serveHealthCheck(c echo.Context) error {
 	defer ss.peerHealthsMutex.RUnlock()
 
 	data := HealthCheckResponseData{
-		Healthy:                   healthy,
-		Version:                   ss.Config.VersionJson.Version,
-		Service:                   ss.Config.VersionJson.Service,
-		IsSeeding:                 ss.isSeeding,
-		IsAudiusdManaged:          ss.isAudiusdManaged,
-		BuiltAt:                   vcsBuildTime,
-		StartedAt:                 ss.StartedAt,
-		SPID:                      ss.Config.SPID,
-		SPOwnerWallet:             ss.Config.SPOwnerWallet,
-		Git:                       ss.Config.GitSHA,
-		AudiusDockerCompose:       ss.Config.AudiusDockerCompose,
-		MediorumPathUsed:          ss.mediorumPathUsed,
-		MediorumPathSize:          ss.mediorumPathSize,
-		StorageExpectation:        ss.storageExpectation,
-		DatabaseSize:              ss.databaseSize,
-		DbSizeErr:                 ss.dbSizeErr,
-		LastSuccessfulRepair:      ss.lastSuccessfulRepair,
-		LastSuccessfulCleanup:     ss.lastSuccessfulCleanup,
-		UploadsCount:              ss.uploadsCount,
-		UploadsCountErr:           ss.uploadsCountErr,
-		AutoUpgradeEnabled:        ss.Config.AutoUpgradeEnabled,
-		TrustedNotifier:           ss.trustedNotifier,
-		Dir:                       ss.Config.Dir,
-		BlobStorePrefix:           blobStorePrefix,
-		MoveFromBlobStorePrefix:   blobStoreMoveFromPrefix,
-		ListenPort:                ss.Config.ListenPort,
-		ReplicationFactor:         ss.Config.ReplicationFactor,
-		Env:                       ss.Config.Env,
-		Self:                      ss.Config.Self,
-		WalletIsRegistered:        ss.Config.WalletIsRegistered,
-		TrustedNotifierID:         ss.Config.TrustedNotifierID,
-		PeerHealths:               ss.peerHealths,
-		UnreachablePeers:          ss.unreachablePeers,
-		FailsPeerReachability:     ss.failsPeerReachability,
-		Signers:                   ss.Config.Signers,
-		StoreAll:                  ss.Config.StoreAll,
-		IsDbLocalhost:             isDbLocalhost(ss.Config.PostgresDSN),
-		IsDiscoveryListensEnabled: ss.Config.discoveryListensEnabled(),
-		DiskHasSpace:              ss.diskHasSpace(),
-		TranscodeQueueLength:      len(ss.transcodeWork),
-		TranscodeStats:            ss.getTranscodeStats(),
+		Healthy:                 healthy,
+		Version:                 ss.Config.OpenAudio.Version.Tag,
+		Service:                 "validator", // TODO: validator, archive, rpc, light, seed
+		IsSeeding:               ss.isSeeding,
+		BuiltAt:                 vcsBuildTime,
+		StartedAt:               ss.StartedAt,
+		SPID:                    ss.Config.SPID,          // TODO: get from ethService
+		SPOwnerWallet:           ss.Config.SPOwnerWallet, // TODO: get from ethService
+		Git:                     ss.Config.OpenAudio.Version.GitSHA,
+		MediorumPathUsed:        ss.mediorumPathUsed,
+		MediorumPathSize:        ss.mediorumPathSize,
+		StorageExpectation:      ss.storageExpectation,
+		DatabaseSize:            ss.databaseSize,
+		DbSizeErr:               ss.dbSizeErr,
+		LastSuccessfulRepair:    ss.lastSuccessfulRepair,
+		LastSuccessfulCleanup:   ss.lastSuccessfulCleanup,
+		UploadsCount:            ss.uploadsCount,
+		UploadsCountErr:         ss.uploadsCountErr,
+		TrustedNotifier:         ss.trustedNotifier,
+		Dir:                     ss.Config.OpenAudio.Storage.Dir,
+		BlobStorePrefix:         blobStorePrefix,
+		MoveFromBlobStorePrefix: blobStoreMoveFromPrefix,
+		ListenPort:              ss.Config.OpenAudio.Server.HTTPSPort,
+		ReplicationFactor:       int(ss.Config.GenesisData.Storage.ReplicationFactor),
+		Env:                     ss.Config.GenesisDoc.ChainID,
+		Self:                    ss.Config.Self,
+		WalletIsRegistered:      ss.Config.WalletIsRegistered,
+		PeerHealths:             ss.peerHealths,
+		UnreachablePeers:        ss.unreachablePeers,
+		FailsPeerReachability:   ss.failsPeerReachability,
+		Signers:                 ss.Config.Signers,
+		StoreAll:                ss.Config.OpenAudio.Storage.StoreAll,
+		DiskHasSpace:            ss.diskHasSpace(),
+		TranscodeQueueLength:    len(ss.transcodeWork),
+		TranscodeStats:          ss.getTranscodeStats(),
 	}
 
 	dataBytes, err := json.Marshal(data)
@@ -141,8 +129,8 @@ func (ss *MediorumServer) serveHealthCheck(c echo.Context) error {
 		return c.JSON(500, map[string]string{"error": "Failed to sort health check data: " + err.Error()})
 	}
 	signatureHex := "private key not set (should only happen on local dev)!"
-	if ss.Config.privateKey != nil {
-		signature, err := signature.SignBytes(dataBytesSorted, ss.Config.privateKey)
+	if ss.Config.PrivKey != nil {
+		signature, err := signature.SignBytes(dataBytesSorted, ss.Config.PrivKey)
 		if err != nil {
 			return c.JSON(500, map[string]string{"error": "Failed to sign health check response: " + err.Error()})
 		}
@@ -160,7 +148,7 @@ func (ss *MediorumServer) serveHealthCheck(c echo.Context) error {
 
 	return c.JSON(status, HealthCheckResponse{
 		Data:      data,
-		Signer:    ss.Config.Self.Wallet,
+		Signer:    ss.Config.OpenAudio.Operator.EthAddress,
 		Signature: signatureHex,
 		Timestamp: time.Now(),
 	})

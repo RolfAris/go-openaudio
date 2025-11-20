@@ -110,7 +110,7 @@ func (ss *MediorumServer) uploadFile(ctx context.Context, qsig string, userWalle
 	}
 
 	if placementHosts != nil {
-		if !slices.Contains(placementHosts, ss.Config.Self.Host) {
+		if !slices.Contains(placementHosts, ss.Config.OpenAudio.Server.Hostname) {
 			return nil, ErrUploadToPlacementHosts
 		}
 		// validate that the placement hosts are all registered nodes
@@ -162,7 +162,7 @@ func (ss *MediorumServer) uploadFile(ctx context.Context, qsig string, userWalle
 				Status:           JobStatusNew,
 				Template:         template,
 				SelectedPreview:  selectedPreview,
-				CreatedBy:        ss.Config.Self.Host,
+				CreatedBy:        ss.Config.OpenAudio.Server.Hostname,
 				CreatedAt:        now,
 				UpdatedAt:        now,
 				OrigFileName:     filename,

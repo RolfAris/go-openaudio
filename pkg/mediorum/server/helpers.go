@@ -40,7 +40,7 @@ func (ss *MediorumServer) replaceHost(c echo.Context, newHost string) url.URL {
 }
 
 func (ss *MediorumServer) getScheme() string {
-	if ss.Config.Env == "stage" || ss.Config.Env == "prod" {
+	if ss.Config.GenesisDoc.ChainID == "audius-mainnet-alpha-beta" || ss.Config.GenesisDoc.ChainID == "audius-testnet-alpha" {
 		return "https"
 	} else {
 		return "http"

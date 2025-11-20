@@ -34,7 +34,7 @@ func testNetworkLocateBlob(cid string) []string {
 	result := []string{}
 	for _, s := range testNetwork {
 		if ok, _ := s.bucket.Exists(ctx, key); ok {
-			result = append(result, s.Config.Self.Host)
+			result = append(result, s.Config.OpenAudio.Server.Hostname)
 		}
 	}
 	return result
@@ -63,12 +63,12 @@ func TestRepair(t *testing.T) {
 	// verify we can get it "manually"
 	{
 		s2 := testNetwork[1]
-		u, err := s2.peerGetUpload(ss.Config.Self.Host, "testing")
+		u, err := s2.peerGetUpload(ss.Config.OpenAudio.Server.Hostname, "testing")
 		assert.NoError(t, err)
 		assert.Equal(t, cid, u.OrigFileCID)
 
 		var uploads []Upload
-		resp, err := s2.reqClient.R().SetSuccessResult(&uploads).Get(ss.Config.Self.Host + "/uploads")
+		resp, err := s2.reqClient.R().SetSuccessResult(&uploads).Get(ss.Config.OpenAudio.Server.Hostname + "/uploads")
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.Len(t, uploads, 1)
@@ -103,7 +103,7 @@ func TestRepair(t *testing.T) {
 	// now over-replicate file
 	//
 	for _, server := range testNetwork {
-		ss.replicateFileToHost(ctx, server.Config.Self.Host, cid, bytes.NewReader(data))
+		ss.replicateFileToHost(ctx, server.Config.OpenAudio.Server.Hostname, cid, bytes.NewReader(data))
 	}
 
 	// assert over-replicated
@@ -126,7 +126,7 @@ func TestRepair(t *testing.T) {
 	if false {
 		byHost := map[string]*MediorumServer{}
 		for _, s := range testNetwork {
-			byHost[s.Config.Self.Host] = s
+			byHost[s.Config.OpenAudio.Server.Hostname] = s
 		}
 
 		rendezvousOrder := []*MediorumServer{}
@@ -143,22 +143,22 @@ func TestRepair(t *testing.T) {
 		standby := rendezvousOrder[replicationFactor+2]
 		err = standby.runRepair(ctx, &RepairTracker{StartedAt: time.Now(), CleanupMode: false, Counters: map[string]int{}})
 		assert.NoError(t, err)
-		assert.False(t, standby.hostHasBlob(standby.Config.Self.Host, cid))
+		assert.False(t, standby.hostHasBlob(standby.Config.OpenAudio.Server.Hostname, cid))
 
 		// running repair in cleanup mode... standby will observe that #1 doesn't have blob so will pull it
 		err = standby.runRepair(ctx, &RepairTracker{StartedAt: time.Now(), CleanupMode: true, Counters: map[string]int{}})
 		assert.NoError(t, err)
-		assert.True(t, standby.hostHasBlob(standby.Config.Self.Host, cid))
+		assert.True(t, standby.hostHasBlob(standby.Config.OpenAudio.Server.Hostname, cid))
 
 		// leader re-gets lost file when repair runs
 		err = leader.runRepair(ctx, &RepairTracker{StartedAt: time.Now(), CleanupMode: false, Counters: map[string]int{}})
 		assert.NoError(t, err)
-		assert.True(t, leader.hostHasBlob(leader.Config.Self.Host, cid))
+		assert.True(t, leader.hostHasBlob(leader.Config.OpenAudio.Server.Hostname, cid))
 
 		// standby drops file after leader has it back
 		err = standby.runRepair(ctx, &RepairTracker{StartedAt: time.Now(), CleanupMode: true, Counters: map[string]int{}})
 		assert.NoError(t, err)
-		assert.False(t, standby.hostHasBlob(standby.Config.Self.Host, cid))
+		assert.False(t, standby.hostHasBlob(standby.Config.OpenAudio.Server.Hostname, cid))
 	}
 
 }

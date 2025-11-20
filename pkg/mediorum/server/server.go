@@ -5,12 +5,10 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +16,7 @@ import (
 	_ "embed"
 	_ "net/http/pprof"
 
-	"github.com/OpenAudio/go-openaudio/pkg/common"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	coreServer "github.com/OpenAudio/go-openaudio/pkg/core/server"
 	audiusHttputil "github.com/OpenAudio/go-openaudio/pkg/httputil"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
@@ -105,8 +103,7 @@ type MediorumServer struct {
 	uploadsCount    int64
 	uploadsCountErr string
 
-	isSeeding        bool
-	isAudiusdManaged bool
+	isSeeding bool
 
 	peerHealthsMutex      sync.RWMutex
 	peerHealths           map[string]*PeerHealth
@@ -117,7 +114,7 @@ type MediorumServer struct {
 	failsPeerReachability bool
 
 	StartedAt time.Time
-	Config    MediorumConfig
+	Config    *config.Config
 
 	crudSweepMutex sync.Mutex
 
@@ -145,47 +142,10 @@ var (
 
 const PercentSeededThreshold = 50
 
-func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, provider registrar.PeerProvider, posChannel chan pos.PoSRequest, core *coreServer.CoreService) (*MediorumServer, error) {
-	if env := os.Getenv("OPENAUDIO_ENV"); env != "" {
-		config.Env = env
-	}
-	config.ProgrammableDistributionEnabled = common.IsProgrammableDistributionEnabled(config.Env)
-
-	var isAudiusdManaged bool
-	if audiusdGenerated := os.Getenv("AUDIUS_D_GENERATED"); audiusdGenerated != "" {
-		isAudiusdManaged = true
-	}
-
-	if config.VersionJson == (version.VersionJson{}) {
-		return nil, errors.New(".version.json is required to be bundled with the mediorum binary")
-	}
-
-	// validate host config
-	if config.Self.Host == "" {
-		return nil, errors.New("host is required")
-	} else if hostUrl, err := url.Parse(config.Self.Host); err != nil {
-		return nil, fmt.Errorf("invalid host: %v", err)
-	} else if config.ListenPort == "" {
-		config.ListenPort = hostUrl.Port()
-	}
-
-	if config.Dir == "" {
-		config.Dir = "/tmp/mediorum"
-	}
-
-	if config.BlobStoreDSN == "" {
-		config.BlobStoreDSN = "file://" + config.Dir + "/blobs?no_tmp_dir=true"
-	}
-
-	if pk, err := ethcontracts.ParsePrivateKeyHex(config.PrivateKey); err != nil {
-		log.Println("invalid private key: ", err)
-	} else {
-		config.privateKey = pk
-	}
-
+func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config *config.Config, provider registrar.PeerProvider, posChannel chan pos.PoSRequest, core *coreServer.CoreService) (*MediorumServer, error) {
 	// check that we're registered...
 	for _, peer := range config.Peers {
-		if strings.EqualFold(config.Self.Wallet, peer.Wallet) && strings.EqualFold(config.Self.Host, peer.Host) {
+		if strings.EqualFold(config.OpenAudio.Operator.EthAddress, peer.Wallet) && strings.EqualFold(config.OpenAudio.Server.Hostname, peer.Host) {
 			config.WalletIsRegistered = true
 			break
 		}
@@ -193,35 +153,31 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 
 	logger.Info("storage server starting")
 
-	if config.discoveryListensEnabled() {
-		logger.Info("discovery listens enabled")
-	}
-
 	// ensure dir
-	if err := os.MkdirAll(config.Dir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(config.OpenAudio.Storage.Dir, os.ModePerm); err != nil {
 		logger.Error("failed to create local persistent storage dir", zap.Error(err))
 	}
 
 	// bucket
-	bucket, err := persistence.Open(config.BlobStoreDSN)
+	bucket, err := persistence.Open(config.OpenAudio.Blob.BlobStoreDSN)
 	if err != nil {
 		logger.Error("failed to open persistent storage bucket", zap.Error(err))
 		return nil, err
 	}
 
 	// bucket to move all files from
-	if config.MoveFromBlobStoreDSN != "" {
-		if config.MoveFromBlobStoreDSN == config.BlobStoreDSN {
+	if config.OpenAudio.Blob.MoveFromBlobStoreDSN != "" {
+		if config.OpenAudio.Blob.MoveFromBlobStoreDSN == config.OpenAudio.Blob.BlobStoreDSN {
 			logger.Error("AUDIUS_STORAGE_DRIVER_URL_MOVE_FROM cannot be the same as AUDIUS_STORAGE_DRIVER_URL")
 			return nil, err
 		}
-		bucketToMoveFrom, err := persistence.Open(config.MoveFromBlobStoreDSN)
+		bucketToMoveFrom, err := persistence.Open(config.OpenAudio.Blob.MoveFromBlobStoreDSN)
 		if err != nil {
 			logger.Error("Failed to open bucket to move from. Ensure AUDIUS_STORAGE_DRIVER_URL and AUDIUS_STORAGE_DRIVER_URL_MOVE_FROM are set (the latter can be empty if not moving data)", zap.Error(err))
 			return nil, err
 		}
 
-		logger.Info(fmt.Sprintf("Moving all files from %s to %s. This may take a few hours...", config.MoveFromBlobStoreDSN, config.BlobStoreDSN))
+		logger.Info(fmt.Sprintf("Moving all files from %s to %s. This may take a few hours...", config.OpenAudio.Blob.MoveFromBlobStoreDSN, config.OpenAudio.Blob.BlobStoreDSN))
 		err = persistence.MoveAllFiles(bucketToMoveFrom, bucket)
 		if err != nil {
 			logger.Error("Failed to move files. Ensure AUDIUS_STORAGE_DRIVER_URL and AUDIUS_STORAGE_DRIVER_URL_MOVE_FROM are set (the latter can be empty if not moving data)", zap.Error(err))
@@ -232,21 +188,10 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 	}
 
 	// db
-	db := dbMustDial(config.PostgresDSN)
-	if config.Env == "dev" {
-		// air doesn't reset client connections so this explicitly sets the client encoding
-		sqlDB, err := db.DB()
-		if err == nil {
-			_, err = sqlDB.Exec("SET client_encoding TO 'UTF8';")
-			if err != nil {
-				return nil, fmt.Errorf("Failed to set client encoding: %v", err)
-			}
-		}
-	}
+	db := dbMustDial(config.OpenAudio.DB.PostgresDSN)
 
 	// pg pool
-	// config.PostgresDSN
-	pgConfig, _ := pgxpool.ParseConfig(config.PostgresDSN)
+	pgConfig, _ := pgxpool.ParseConfig(config.OpenAudio.DB.PostgresDSN)
 	pgPool, err := pgxpool.NewWithConfig(context.Background(), pgConfig)
 	if err != nil {
 		logger.Error("dial postgres failed", zap.Error(err))
@@ -265,28 +210,15 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 		}
 	}
 
-	crud := crudr.New(config.Self.Host, config.privateKey, peerHosts, db, mediorumLifecycle, logger)
-	dbMigrate(crud, config.Self.Host)
+	crud := crudr.New(config.OpenAudio.Server.Hostname, config.PrivKey, peerHosts, db, mediorumLifecycle, logger)
+	dbMigrate(crud, config.OpenAudio.Server.Hostname)
 
 	rendezvousHasher := NewRendezvousHasher(allHosts)
 
 	// req.cool http client
 	reqClient := req.C().
-		SetUserAgent("mediorum " + config.Self.Host).
+		SetUserAgent("mediorum " + config.OpenAudio.Server.Hostname).
 		SetTimeout(5 * time.Second)
-
-	// Read trusted notifier endpoint from chain
-	var trustedNotifier ethcontracts.NotifierInfo
-	if config.TrustedNotifierID > 0 {
-		trustedNotifier, err = ethcontracts.GetNotifierForID(strconv.Itoa(config.TrustedNotifierID), config.Self.Wallet)
-		if err == nil {
-			logger.Info("got trusted notifier from chain", zap.String("endpoint", trustedNotifier.Endpoint), zap.String("wallet", trustedNotifier.Wallet))
-		} else {
-			logger.Error("failed to get trusted notifier from chain, not polling delist statuses", zap.Error(err))
-		}
-	} else {
-		logger.Warn("trusted notifier id not set, not polling delist statuses or serving /contact route")
-	}
 
 	// echoServer server
 	echoServer := echo.New()
@@ -297,6 +229,9 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 	echoServer.Use(middleware.Logger())
 	echoServer.Use(middleware.CORS())
 	echoServer.Use(timingMiddleware)
+
+	// old check
+	isSeeding := config.GenesisDoc.ChainID == "audius-mainnet-alpha-beta" || config.GenesisDoc.ChainID == "audius-testnet-alpha"
 
 	ss := &MediorumServer{
 		lc:               mediorumLifecycle,
@@ -309,8 +244,7 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 		quit:             make(chan error, 1),
 		g:                provider,
 		trustedNotifier:  &trustedNotifier,
-		isSeeding:        config.Env == "stage" || config.Env == "prod",
-		isAudiusdManaged: isAudiusdManaged,
+		isSeeding:        isSeeding,
 		rendezvousHasher: rendezvousHasher,
 		transcodeWork:    make(chan *Upload),
 		posChannel:       posChannel,
@@ -332,10 +266,10 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pro
 	routes := echoServer.Group(apiBasePath)
 
 	routes.GET("", func(c echo.Context) error {
-		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+config.Self.Host)
+		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+config.OpenAudio.Server.Hostname)
 	})
 	routes.GET("/", func(c echo.Context) error {
-		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+config.Self.Host)
+		return c.Redirect(http.StatusFound, "/dashboard/#/nodes/content-node?endpoint="+config.OpenAudio.Server.Hostname)
 	})
 
 	// public: uploads
@@ -474,7 +408,7 @@ func (ss *MediorumServer) MustStart() error {
 	ss.lc.AddManagedRoutine("transcoder", ss.startTranscoder)
 	ss.lc.AddManagedRoutine("audio analyzer", ss.startAudioAnalyzer)
 
-	if ss.Config.StoreAll {
+	if ss.Config.OpenAudio.Storage.StoreAll {
 		ss.lc.AddManagedRoutine("fix truncated qm worker", ss.startFixTruncatedQmWorker)
 	}
 
@@ -570,67 +504,6 @@ func (ss *MediorumServer) pollForSeedingCompletion(ctx context.Context) error {
 				return nil
 			}
 		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-}
-
-// discovery listens are enabled if endpoints are provided
-func (mc *MediorumConfig) discoveryListensEnabled() bool {
-	return len(mc.DiscoveryListensEndpoints) > 0
-}
-
-func (ss *MediorumServer) startEchoServer(ctx context.Context) error {
-	done := make(chan error, 1)
-	go func() {
-		err := ss.echo.Start(":" + ss.Config.ListenPort)
-		if err != nil && err != http.ErrServerClosed {
-			ss.logger.Error("echo server error", zap.Error(err))
-			done <- err
-		} else {
-			done <- nil
-		}
-	}()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		err := ss.echo.Shutdown(shutdownCtx)
-		if err != nil {
-			ss.logger.Error("failed to shutdown echo server", zap.Error(err))
-			return err
-		}
-		return ctx.Err()
-	}
-}
-
-func (ss *MediorumServer) startPprofServer(ctx context.Context) error {
-	done := make(chan error, 1)
-	srv := &http.Server{Addr: ":6060", Handler: nil}
-	go func() {
-		err := srv.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
-			ss.logger.Error("pprof server error", zap.Error(err))
-			done <- err
-		} else {
-			done <- nil
-		}
-	}()
-	for {
-		select {
-		case err := <-done:
-			return err
-		case <-ctx.Done():
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			if err := srv.Shutdown(shutdownCtx); err != nil {
-				ss.logger.Error("failed to shutdown pprof server", zap.Error(err))
-				return err
-			}
 			return ctx.Err()
 		}
 	}

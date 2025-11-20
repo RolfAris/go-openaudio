@@ -32,7 +32,7 @@ var (
 )
 
 func (ss *MediorumServer) startTranscoder(ctx context.Context) error {
-	myHost := ss.Config.Self.Host
+	myHost := ss.Config.OpenAudio.Server.Hostname
 
 	// use most cpus for transcode
 	numWorkers := runtime.NumCPU() - 2
@@ -85,7 +85,7 @@ func (ss *MediorumServer) startTranscoder(ctx context.Context) error {
 	// which will have the orig.
 	//
 	// long term fix is to move transcode inline to upload...
-	if ss.Config.Env == "prod" && !ss.Config.StoreAll {
+	if ss.Config.GenesisDoc.ChainID == "audius-mainnet-alpha-beta" && !ss.Config.OpenAudio.Storage.StoreAll {
 		return nil
 	}
 
@@ -334,7 +334,7 @@ outerLoop:
 }
 
 func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
-	upload.TranscodedBy = ss.Config.Self.Host
+	upload.TranscodedBy = ss.Config.OpenAudio.Server.Hostname
 	upload.TranscodedAt = time.Now().UTC()
 	upload.Status = JobStatusBusy
 	fileHash := upload.OrigFileCID

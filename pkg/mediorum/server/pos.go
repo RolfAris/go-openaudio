@@ -26,13 +26,13 @@ func (ss *MediorumServer) startPoSHandler(ctx context.Context) error {
 			}
 			orderedHosts := ss.rendezvousHasher.Rank(cid)
 			ss.logger.Info("Retrieved artifacts for proof of storage challenge", zap.String("cid", cid), zap.Strings("provers", orderedHosts))
-			replicaSet := make([]string, 0, ss.Config.ReplicationFactor)
+			replicaSet := make([]string, 0, int(ss.Config.GenesisData.Storage.ReplicationFactor))
 			mustProve := false
 			for i, h := range orderedHosts {
-				if i >= ss.Config.ReplicationFactor {
+				if i >= int(ss.Config.GenesisData.Storage.ReplicationFactor) {
 					break
 				}
-				if ss.Config.Self.Host == h {
+				if ss.Config.OpenAudio.Server.Hostname == h {
 					mustProve = true
 				}
 				replicaSet = append(replicaSet, h)

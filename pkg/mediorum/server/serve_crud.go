@@ -43,7 +43,7 @@ func (ss *MediorumServer) serveCrudSweep(c echo.Context) error {
 	// so we only forward ops for which we are an orig upload mirror
 	// thus using rendezvous for gossip forwarding
 	filteredOps := make([]*crudr.Op, 0, len(ops)/2)
-	myHost := []byte(ss.Config.Self.Host)
+	myHost := []byte(ss.Config.OpenAudio.Server.Hostname)
 	for _, op := range ops {
 		// if our host doesn't appear in the record, we are not a mirror
 		if op.Table == "uploads" && !bytes.Contains(op.Data, myHost) {

@@ -40,7 +40,7 @@ func (ss *MediorumServer) startAudioAnalyzer(ctx context.Context) error {
 
 	// in prod... only look for old work on StoreAll nodes
 	// see transcode.go line 123 for longer comment
-	if ss.Config.Env == "prod" && !ss.Config.StoreAll {
+	if ss.Config.GenesisDoc.ChainID == "audius-mainnet-alpha-beta" && !ss.Config.OpenAudio.Storage.StoreAll {
 		return nil
 	}
 
@@ -120,7 +120,7 @@ func (ss *MediorumServer) startAudioAnalysisWorker(workerId int, work chan *Uplo
 
 func (ss *MediorumServer) analyzeAudio(ctx context.Context, upload *Upload, deadline time.Duration) error {
 	upload.AudioAnalyzedAt = time.Now().UTC()
-	upload.AudioAnalyzedBy = ss.Config.Self.Host
+	upload.AudioAnalyzedBy = ss.Config.OpenAudio.Server.Hostname
 	upload.Status = JobStatusBusyAudioAnalysis
 
 	ctx, cancel := context.WithTimeout(ctx, deadline)

@@ -91,7 +91,7 @@ func (ss *MediorumServer) generateAudioPreview(ctx context.Context, fileHash str
 		CID:                 previewCid,
 		SourceCID:           fileHash,
 		PreviewStartSeconds: previewStartSeconds,
-		CreatedBy:           ss.Config.Self.Host,
+		CreatedBy:           ss.Config.OpenAudio.Server.Hostname,
 		CreatedAt:           time.Now(),
 	}
 	err = ss.crud.Create(audioPreview)

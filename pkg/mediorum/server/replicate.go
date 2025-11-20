@@ -22,7 +22,7 @@ import (
 )
 
 func (ss *MediorumServer) replicateFileParallel(ctx context.Context, cid string, filePath string, placementHosts []string) ([]string, error) {
-	replicaCount := ss.Config.ReplicationFactor
+	replicaCount := int(ss.Config.GenesisData.Storage.ReplicationFactor)
 
 	if len(placementHosts) > 0 {
 		// use all explicit placement hosts
@@ -88,7 +88,7 @@ func (ss *MediorumServer) replicateFile(ctx context.Context, fileName string, fi
 		} else {
 			logger.Debug("replicated")
 			success = append(success, peer)
-			if len(success) == ss.Config.ReplicationFactor {
+			if len(success) == int(ss.Config.GenesisData.Storage.ReplicationFactor) {
 				break
 			}
 		}
@@ -138,7 +138,7 @@ func (ss *MediorumServer) haveInMyBucket(fileName string) bool {
 
 func (ss *MediorumServer) replicateFileToHost(ctx context.Context, peer string, fileName string, file io.Reader) error {
 	// logger := ss.logger.With()
-	if peer == ss.Config.Self.Host {
+	if peer == ss.Config.OpenAudio.Server.Hostname {
 		return ss.replicateToMyBucket(ctx, fileName, file)
 	}
 
@@ -170,8 +170,8 @@ func (ss *MediorumServer) replicateFileToHost(ctx context.Context, peer string, 
 		peer+"/internal/blobs",
 		m.FormDataContentType(),
 		r,
-		ss.Config.privateKey,
-		ss.Config.Self.Host,
+		ss.Config.PrivKey,
+		ss.Config.OpenAudio.Server.Hostname,
 	)
 	if err != nil {
 		return err
@@ -211,7 +211,7 @@ func (ss *MediorumServer) hostGetBlobInfo(host, key string) (*blob.Attributes, e
 }
 
 func (ss *MediorumServer) pullFileFromHost(ctx context.Context, host, cid string) error {
-	if host == ss.Config.Self.Host {
+	if host == ss.Config.OpenAudio.Server.Hostname {
 		return errors.New("should not pull blob from self")
 	}
 	client := http.Client{
@@ -219,7 +219,7 @@ func (ss *MediorumServer) pullFileFromHost(ctx context.Context, host, cid string
 	}
 	u := apiPath(host, "internal/blobs", url.PathEscape(cid))
 
-	req, err := signature.SignedGet(ctx, u, ss.Config.privateKey, ss.Config.Self.Host)
+	req, err := signature.SignedGet(ctx, u, ss.Config.PrivKey, ss.Config.OpenAudio.Server.Hostname)
 	if err != nil {
 		return err
 	}
@@ -240,9 +240,9 @@ func (ss *MediorumServer) pullFileFromHost(ctx context.Context, host, cid string
 // if the node is using local (disk) storage, do not replicate if there is <200GB remaining (i.e. 10% of 2TB)
 func (ss *MediorumServer) diskHasSpace() bool {
 	// don't worry about running out of space on dev or stage
-	if ss.Config.Env != "prod" {
+	if ss.Config.GenesisDoc.ChainID != "audius-mainnet-alpha-beta" {
 		return true
 	}
 
-	return !strings.HasPrefix(ss.Config.BlobStoreDSN, "file://") || ss.mediorumPathFree/uint64(1e9) > 200
+	return !strings.HasPrefix(ss.Config.OpenAudio.Blob.BlobStoreDSN, "file://") || ss.mediorumPathFree/uint64(1e9) > 200
 }

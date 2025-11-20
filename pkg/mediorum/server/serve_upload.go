@@ -193,7 +193,7 @@ func (ss *MediorumServer) postUpload(c echo.Context) error {
 	}
 
 	if placementHosts != nil {
-		if !slices.Contains(placementHosts, ss.Config.Self.Host) {
+		if !slices.Contains(placementHosts, ss.Config.OpenAudio.Server.Hostname) {
 			return c.String(400, "if placement_hosts is specified, you must upload to one of the placement_hosts")
 		}
 		// validate that the placement hosts are all registered nodes
@@ -244,7 +244,7 @@ func (ss *MediorumServer) postUpload(c echo.Context) error {
 				Status:           JobStatusNew,
 				Template:         template,
 				SelectedPreview:  selectedPreview,
-				CreatedBy:        ss.Config.Self.Host,
+				CreatedBy:        ss.Config.OpenAudio.Server.Hostname,
 				CreatedAt:        now,
 				UpdatedAt:        now,
 				OrigFileName:     formFile.Filename,
@@ -312,11 +312,6 @@ func (ss *MediorumServer) postUpload(c echo.Context) error {
 	for _, upload := range uploads {
 		// Send FileUpload transaction after transcoding completes
 		go func(c echo.Context, upload *Upload) {
-			// Skip FileUpload transaction if programmable distribution is disabled
-			if !ss.Config.ProgrammableDistributionEnabled {
-				return
-			}
-
 			uploadSig := c.QueryParam("sig")
 			if uploadSig == "" {
 				return
@@ -384,7 +379,7 @@ func (ss *MediorumServer) postUpload(c echo.Context) error {
 				return
 			}
 
-			validatorSig, err := common.EthSign(ss.Config.privateKey, validatorSigBytes)
+			validatorSig, err := common.EthSign(ss.Config.PrivKey, validatorSigBytes)
 			if err != nil {
 				ss.logger.Error("failed to generate validator signature", zap.Error(err))
 				return
@@ -400,7 +395,7 @@ func (ss *MediorumServer) postUpload(c echo.Context) error {
 								UploadId:           upload.ID,
 								Cid:                upload.OrigFileCID,
 								TranscodedCid:      transcodedCID,
-								ValidatorAddress:   ss.Config.Self.Wallet,
+								ValidatorAddress:   ss.Config.OpenAudio.Operator.EthAddress,
 								ValidatorSignature: validatorSig,
 							},
 						},

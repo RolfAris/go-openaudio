@@ -37,16 +37,16 @@ func TestQmSync(t *testing.T) {
 	assert.Equal(t, 0, s2count)
 
 	s2done := false
-	s2.pgPool.QueryRow(ctx, "select count(*) = 1 from qm_sync where host = $1", ss.Config.Self.Host).Scan(&s2done)
+	s2.pgPool.QueryRow(ctx, "select count(*) = 1 from qm_sync where host = $1", ss.Config.OpenAudio.Server.Hostname).Scan(&s2done)
 	assert.False(t, s2done)
 
-	err = s2.pullQmFromPeer(ctx, ss.Config.Self.Host)
+	err = s2.pullQmFromPeer(ctx, ss.Config.OpenAudio.Server.Hostname)
 	assert.NoError(t, err)
 
 	s2.pgPool.QueryRow(ctx, "select count(*) from qm_cids").Scan(&s2count)
 	assert.Equal(t, 3, s2count)
 
-	s2.pgPool.QueryRow(ctx, "select count(*) = 1 from qm_sync where host = $1", ss.Config.Self.Host).Scan(&s2done)
+	s2.pgPool.QueryRow(ctx, "select count(*) = 1 from qm_sync where host = $1", ss.Config.OpenAudio.Server.Hostname).Scan(&s2done)
 	assert.True(t, s2done)
 
 	var qm string
@@ -54,11 +54,11 @@ func TestQmSync(t *testing.T) {
 	assert.Equal(t, "Qm1", qm)
 
 	// run it again
-	err = s2.pullQmFromPeer(ctx, ss.Config.Self.Host)
+	err = s2.pullQmFromPeer(ctx, ss.Config.OpenAudio.Server.Hostname)
 	assert.NoError(t, err)
 
 	// force duplicate run
 	s2.pgPool.Exec(ctx, "truncate qm_sync")
-	err = s2.pullQmFromPeer(ctx, ss.Config.Self.Host)
+	err = s2.pullQmFromPeer(ctx, ss.Config.OpenAudio.Server.Hostname)
 	assert.NoError(t, err)
 }

@@ -20,7 +20,7 @@ func TestEIP712(t *testing.T) {
 			Nonce:      "0x8172f237c0ff351c2478fbb8ac5a21c4aa179304f8550e782284828191adf142",
 		}
 
-		emAddr, emChainId := DeterministicEntityManagerAddressAndChainID("mainnet-alpha-beta")
+		emAddr, emChainId := DeterministicEntityManagerAddressAndChainID("audius-mainnet-alpha-beta")
 
 		address, _, err := RecoverPubkeyFromCoreTx(emAddr, emChainId, tx)
 		require.Nil(t, err)

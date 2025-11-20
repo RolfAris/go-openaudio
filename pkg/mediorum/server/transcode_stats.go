@@ -35,7 +35,7 @@ func (ss *MediorumServer) updateTranscodeStats(_ context.Context) *TranscodeStat
 		and created_at > NOW() - INTERVAL '10 days'
 		and created_by = transcoded_by
 		and created_by = ?
-	`, ss.Config.Self.Host).Scan(&stats).Error
+	`, ss.Config.OpenAudio.Server.Hostname).Scan(&stats).Error
 
 	if err != nil {
 		ss.logger.Error("transcode stats query failed", zap.Error(err))

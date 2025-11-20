@@ -20,7 +20,7 @@ func TestUploadFile(t *testing.T) {
 		SetFile("files", "testdata/beep.wav").
 		SetFormData(map[string]string{"template": "audio"}).
 		SetSuccessResult(&uploads).
-		MustPost(s1.Config.Self.Host + "/uploads")
+		MustPost(s1.Config.OpenAudio.Server.Hostname + "/uploads")
 
 	assert.Equal(t, resp.StatusCode, 200)
 	uploadId := uploads[0].ID
@@ -33,7 +33,7 @@ func TestUploadFile(t *testing.T) {
 	// poll for complete
 	var u2 *Upload
 	for i := 0; i < 3; i++ {
-		resp, err := s2.reqClient.R().SetSuccessResult(&u2).Get(s2.Config.Self.Host + "/uploads/" + uploadId)
+		resp, err := s2.reqClient.R().SetSuccessResult(&u2).Get(s2.Config.OpenAudio.Server.Hostname + "/uploads/" + uploadId)
 		assert.NoError(t, err)
 		assert.Equal(t, resp.StatusCode, 200)
 		if u2.Status == JobStatusDone {
@@ -43,8 +43,8 @@ func TestUploadFile(t *testing.T) {
 	}
 
 	assert.Equal(t, u2.TranscodeProgress, 1.0)
-	assert.Len(t, u2.TranscodedMirrors, s1.Config.ReplicationFactor)
-	assert.Equal(t, u2.TranscodedBy, s1.Config.Self.Host)
+	assert.Len(t, u2.TranscodedMirrors, int(s1.Config.GenesisData.Storage.ReplicationFactor))
+	assert.Equal(t, u2.TranscodedBy, s1.Config.OpenAudio.Server.Hostname)
 
 	// check transcode stats
 	{
@@ -59,7 +59,7 @@ func TestUploadFile(t *testing.T) {
 		var audioPreview AudioPreview
 		resp := s1.reqClient.R().
 			SetSuccessResult(&audioPreview).
-			MustPost(s1.Config.Self.Host + "/generate_preview/" + u2.TranscodeResults["320"] + "/1")
+			MustPost(s1.Config.OpenAudio.Server.Hostname + "/generate_preview/" + u2.TranscodeResults["320"] + "/1")
 		assert.Equal(t, resp.StatusCode, 200)
 		assert.Equal(t, "1", audioPreview.PreviewStartSeconds)
 	}
@@ -72,8 +72,8 @@ func TestUploadPlacement(t *testing.T) {
 	s5 := testNetwork[4]
 
 	examplePlacement := []string{
-		s3.Config.Self.Host,
-		s5.Config.Self.Host,
+		s3.Config.OpenAudio.Server.Hostname,
+		s5.Config.OpenAudio.Server.Hostname,
 	}
 
 	var uploads []Upload
@@ -85,7 +85,7 @@ func TestUploadPlacement(t *testing.T) {
 			"placement_hosts": strings.Join(examplePlacement, ","),
 		}).
 		SetSuccessResult(&uploads).
-		MustPost(s3.Config.Self.Host + "/uploads")
+		MustPost(s3.Config.OpenAudio.Server.Hostname + "/uploads")
 
 	assert.Equal(t, resp.StatusCode, 200)
 	assert.Equal(t, examplePlacement, uploads[0].PlacementHosts)
@@ -99,7 +99,7 @@ func TestUploadPlacement(t *testing.T) {
 	// poll for complete
 	var u2 *Upload
 	for i := 0; i < 3; i++ {
-		resp, err := s2.reqClient.R().SetSuccessResult(&u2).Get(s3.Config.Self.Host + "/uploads/" + uploadId)
+		resp, err := s2.reqClient.R().SetSuccessResult(&u2).Get(s3.Config.OpenAudio.Server.Hostname + "/uploads/" + uploadId)
 		assert.NoError(t, err)
 		assert.Equal(t, resp.StatusCode, 200)
 		if u2.Status == JobStatusDone {
@@ -147,7 +147,7 @@ func TestUploadWithInvalidPlacementHosts(t *testing.T) {
 
 	// Create placement hosts array with invalid host
 	invalidPlacementHosts := []string{
-		s1.Config.Self.Host,
+		s1.Config.OpenAudio.Server.Hostname,
 		"http://invalid-host:1991", // This host is not in config.Peers
 	}
 
@@ -160,7 +160,7 @@ func TestUploadWithInvalidPlacementHosts(t *testing.T) {
 			"placement_hosts": strings.Join(invalidPlacementHosts, ","),
 		}).
 		SetSuccessResult(&uploads).
-		Post(s1.Config.Self.Host + "/uploads")
+		Post(s1.Config.OpenAudio.Server.Hostname + "/uploads")
 
 	assert.NoError(t, err)
 	assert.Equal(t, 400, resp.StatusCode)

@@ -46,6 +46,8 @@ const (
 	// Defaults for echo server
 	DefaultRequestTimeout = 5 * time.Second
 	DefaultIPRateLimit    = 100
+
+	DefaultStorageDir = "/tmp/mediorum"
 )
 
 // Root configuration for OpenAudio.
@@ -107,6 +109,7 @@ type OpenAudioConfig struct {
 	Server   *ServerConfig   `mapstructure:"server"`
 	Snapshot *SnapshotConfig `mapstructure:"snapshot"`
 	Pruning  *PruningConfig  `mapstructure:"pruning"`
+	Storage  *StorageConfig  `mapstructure:"storage"`
 }
 
 func DefaultOpenAudioConfig() *OpenAudioConfig {
@@ -122,6 +125,7 @@ func DefaultOpenAudioConfig() *OpenAudioConfig {
 		Server:   DefaultServerConfig(),
 		Snapshot: DefaultSnapshotConfig(),
 		Pruning:  DefaultPruningConfig(),
+		Storage:  DefaultStorageConfig(),
 	}
 }
 
@@ -175,10 +179,9 @@ type BlobConfig struct {
 }
 
 func DefaultBlobConfig() *BlobConfig {
-	blobDir := filepath.Join(DefaultHomeDir, DefaultDataDir, DefaultBlobsDir)
 	return &BlobConfig{
 		Home:                 DefaultHomeDir,
-		BlobStoreDSN:         "file://" + blobDir,
+		BlobStoreDSN:         "file://" + DefaultStorageDir + "/blobs?no_tmp_dir=true",
 		MoveFromBlobStoreDSN: "",
 	}
 }
@@ -306,5 +309,17 @@ func DefaultPruningConfig() *PruningConfig {
 	return &PruningConfig{
 		Enabled:      true,
 		RetainHeight: 604800, // 1 week
+	}
+}
+
+type StorageConfig struct {
+	Dir      string `mapstructure:"dir"`
+	StoreAll bool   `mapstructure:"store_all"`
+}
+
+func DefaultStorageConfig() *StorageConfig {
+	return &StorageConfig{
+		Dir:      DefaultStorageDir,
+		StoreAll: false,
 	}
 }

@@ -14,10 +14,10 @@ import (
 func (ss *MediorumServer) rendezvousAllHosts(key string) ([]string, bool) {
 	orderedHosts := ss.rendezvousHasher.Rank(key)
 
-	myRank := slices.Index(orderedHosts, ss.Config.Self.Host)
-	isMine := myRank >= 0 && myRank < ss.Config.ReplicationFactor
+	myRank := slices.Index(orderedHosts, ss.Config.OpenAudio.Server.Hostname)
+	isMine := myRank >= 0 && myRank < int(ss.Config.GenesisData.Storage.ReplicationFactor)
 
-	if ss.Config.StoreAll {
+	if ss.Config.OpenAudio.Storage.StoreAll {
 		isMine = true
 	}
 	return orderedHosts, isMine

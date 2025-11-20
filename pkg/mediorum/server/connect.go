@@ -196,7 +196,7 @@ func (s *StorageService) GetRendezvousNodes(ctx context.Context, req *connect.Re
 
 	replicationFactor := int(req.Msg.ReplicationFactor)
 	if replicationFactor <= 0 {
-		replicationFactor = s.mediorum.Config.ReplicationFactor
+		replicationFactor = int(s.mediorum.Config.GenesisData.Storage.ReplicationFactor)
 	}
 
 	// Use the existing rendezvous hasher to get all nodes in ranked order

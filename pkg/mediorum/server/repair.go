@@ -86,9 +86,9 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 			}
 
 			// check that network is valid (should have more peers than replication factor)
-			if healthyPeers := ss.findHealthyPeers(time.Hour); len(healthyPeers) < ss.Config.ReplicationFactor {
+			if healthyPeers := ss.findHealthyPeers(time.Hour); len(healthyPeers) < int(ss.Config.GenesisData.Storage.ReplicationFactor) {
 				logger.Warn("not enough healthy peers to run repair",
-					zap.Int("R", ss.Config.ReplicationFactor),
+					zap.Int("R", int(ss.Config.GenesisData.Storage.ReplicationFactor)),
 					zap.Int("peers", len(healthyPeers)))
 				tracker.AbortedReason = "NOT_ENOUGH_PEERS"
 				tracker.FinishedAt = time.Now()
@@ -285,7 +285,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	isPlaced := len(placementHosts) > 0
 	if isPlaced {
 		// we're not a preferred host
-		if !slices.Contains(placementHosts, ss.Config.Self.Host) {
+		if !slices.Contains(placementHosts, ss.Config.OpenAudio.Server.Hostname) {
 			return nil
 		}
 
@@ -304,7 +304,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 
 	tracker.Counters["total_checked"]++
 
-	myRank := slices.Index(preferredHosts, ss.Config.Self.Host)
+	myRank := slices.Index(preferredHosts, ss.Config.OpenAudio.Server.Hostname)
 
 	key := cidutil.ShardCID(cid)
 	alreadyHave := true
@@ -374,7 +374,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 		success := false
 		// loop preferredHosts (not preferredHealthyHosts) because pullFileFromHost can still give us a file even if we thought the host was unhealthy
 		for _, host := range preferredHosts {
-			if host == ss.Config.Self.Host {
+			if host == ss.Config.OpenAudio.Server.Hostname {
 				continue
 			}
 			err := ss.pullFileFromHost(ctx, host, cid)
@@ -409,16 +409,18 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	// but nodes with more free disk space will use a higher threshold
 	// to accomidate "spill over" from nodes that might be full or down.
 	diskPercentFree := float64(ss.mediorumPathFree) / float64(ss.mediorumPathSize)
-	rankThreshold := ss.Config.ReplicationFactor + 2
+	replicationFactor := int(ss.Config.GenesisData.Storage.ReplicationFactor)
+	rankThreshold := replicationFactor + 2
 	if !ss.diskHasSpace() {
-		rankThreshold = ss.Config.ReplicationFactor
+		rankThreshold = replicationFactor
 	} else if diskPercentFree > 0.4 {
-		rankThreshold = ss.Config.ReplicationFactor * 3
+		rankThreshold = replicationFactor * 3
 	} else if diskPercentFree > 0.2 {
-		rankThreshold = ss.Config.ReplicationFactor * 2
+		rankThreshold = replicationFactor * 2
 	}
 
-	if !isPlaced && !ss.Config.StoreAll && tracker.CleanupMode && alreadyHave && myRank > rankThreshold && !wasReplicatedThisWeek {
+	storeAll := ss.Config.OpenAudio.Storage.StoreAll
+	if !isPlaced && !storeAll && tracker.CleanupMode && alreadyHave && myRank > rankThreshold && !wasReplicatedThisWeek {
 		// if i'm the first node that over-replicated, keep the file for a week as a buffer since a node ahead of me in the preferred order will likely be down temporarily at some point
 		tracker.Counters["delete_over_replicated_needed"]++
 		err = ss.dropFromMyBucket(cid)

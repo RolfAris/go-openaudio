@@ -30,7 +30,7 @@ func TestServeImage(t *testing.T) {
 	// the first time it will go get the orig + generate a resized version
 	// the x-dynamic-resize-ok header should be set
 	{
-		resp, err := http.Get(s1.Config.Self.Host + "/content/" + cid + "/150x150.jpg")
+		resp, err := http.Get(s1.Config.OpenAudio.Server.Hostname + "/content/" + cid + "/150x150.jpg")
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.NotEmpty(t, resp.Header.Get("x-fetch-ok"))
@@ -42,7 +42,7 @@ func TestServeImage(t *testing.T) {
 
 	// the second time it should have the variant on disk
 	{
-		resp, err := http.Get(s1.Config.Self.Host + "/content/" + cid + "/150x150.jpg")
+		resp, err := http.Get(s1.Config.OpenAudio.Server.Hostname + "/content/" + cid + "/150x150.jpg")
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.Empty(t, resp.Header.Get("x-resize-ok"))
@@ -51,7 +51,7 @@ func TestServeImage(t *testing.T) {
 
 	// it should also have the orig
 	{
-		resp, err := http.Get(s1.Config.Self.Host + "/content/" + cid + "/original.jpg")
+		resp, err := http.Get(s1.Config.OpenAudio.Server.Hostname + "/content/" + cid + "/original.jpg")
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.Empty(t, resp.Header.Get("x-resize-ok"))
@@ -59,7 +59,7 @@ func TestServeImage(t *testing.T) {
 
 	// some alternate URLs we need to support??
 	{
-		resp, err := http.Get(s1.Config.Self.Host + "/content/" + cid)
+		resp, err := http.Get(s1.Config.OpenAudio.Server.Hostname + "/content/" + cid)
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.Empty(t, resp.Header.Get("x-resize-ok"))
@@ -67,7 +67,7 @@ func TestServeImage(t *testing.T) {
 
 	// some alternate URLs we need to support??
 	{
-		resp, err := http.Get(s1.Config.Self.Host + "/content/" + cid + ".jpg")
+		resp, err := http.Get(s1.Config.OpenAudio.Server.Hostname + "/content/" + cid + ".jpg")
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.Empty(t, resp.Header.Get("x-resize-ok"))
@@ -78,7 +78,7 @@ func TestServeImage(t *testing.T) {
 		qmKey := "QmQSGUjVkSfGBJCU4dcPn3LC17ikQXbfikGbFUAzL5rcXt/original.jpg"
 		s2.replicateToMyBucket(ctx, qmKey, f)
 
-		resp, err := http.Get(s1.Config.Self.Host + "/content/" + qmKey)
+		resp, err := http.Get(s1.Config.OpenAudio.Server.Hostname + "/content/" + qmKey)
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 	}
@@ -96,21 +96,21 @@ func TestServeImage(t *testing.T) {
 
 		// can get upload from s3
 		{
-			u, err := s1.peerGetUpload(s3.Config.Self.Host, someUlid)
+			u, err := s1.peerGetUpload(s3.Config.OpenAudio.Server.Hostname, someUlid)
 			assert.NoError(t, err)
 			assert.Equal(t, someUlid, u.ID)
 		}
 
 		// can not get upload from s4
 		{
-			u, err := s1.peerGetUpload(s4.Config.Self.Host, someUlid)
+			u, err := s1.peerGetUpload(s4.Config.OpenAudio.Server.Hostname, someUlid)
 			assert.Error(t, err)
 			assert.Nil(t, u)
 		}
 
 		// s4 doesn't have upload record
 		// but will get it because getUploadOrigCID will find upload record if needed
-		resp, err := http.Get(s4.Config.Self.Host + "/content/" + someUlid + "/150x150.jpg")
+		resp, err := http.Get(s4.Config.OpenAudio.Server.Hostname + "/content/" + someUlid + "/150x150.jpg")
 		assert.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
 	}

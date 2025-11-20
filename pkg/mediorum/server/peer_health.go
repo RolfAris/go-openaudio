@@ -30,14 +30,14 @@ func (ss *MediorumServer) startHealthPoller(ctx context.Context) error {
 				peer := peer
 				go func() {
 					defer wg.Done()
-					if peer.Host == ss.Config.Self.Host {
+					if peer.Host == ss.Config.OpenAudio.Server.Hostname {
 						return
 					}
 					req, err := http.NewRequest("GET", apiPath(peer.Host, "/health_check"), nil)
 					if err != nil {
 						return
 					}
-					req.Header.Set("User-Agent", "mediorum "+ss.Config.Self.Host)
+					req.Header.Set("User-Agent", "mediorum "+ss.Config.OpenAudio.Server.Hostname)
 					resp, err := httpClient.Do(req)
 					if err != nil {
 						return
@@ -110,7 +110,7 @@ func (ss *MediorumServer) getPeerHealth(peer string) *PeerHealth {
 
 // @dev lock ss.peerHealthsMutex before calling this
 func (ss *MediorumServer) getReachableByMajorityButNotByHost(host string) []string {
-	if host == ss.Config.Self.Host {
+	if host == ss.Config.OpenAudio.Server.Hostname {
 		return []string{} // not meant to be called on self
 	}
 
@@ -119,7 +119,7 @@ func (ss *MediorumServer) getReachableByMajorityButNotByHost(host string) []stri
 	numReachableBy := map[string]int{}
 	totalReachableHosts := 0
 	for _, peer := range ss.Config.Peers {
-		if peer.Host == host || peer.Host == ss.Config.Self.Host {
+		if peer.Host == host || peer.Host == ss.Config.OpenAudio.Server.Hostname {
 			continue
 		}
 		if !slices.Contains(maps.Keys(numReachableBy), peer.Host) {
@@ -184,7 +184,7 @@ func (ss *MediorumServer) proxyHealthCheck(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create request"})
 	}
-	req.Header.Set("User-Agent", "mediorum proxy debug "+ss.Config.Self.Host)
+	req.Header.Set("User-Agent", "mediorum proxy debug "+ss.Config.OpenAudio.Server.Hostname)
 
 	timeoutSec, err := strconv.Atoi(c.QueryParam("timeout_sec"))
 	if err != nil {

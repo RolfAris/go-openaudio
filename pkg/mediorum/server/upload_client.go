@@ -17,7 +17,7 @@ func (ss *MediorumServer) startUploadScroller(ctx context.Context) error {
 			// set interval to 5 minutes after first iteration
 			ticker.Reset(5 * time.Minute)
 			for _, peer := range ss.Config.Peers {
-				if peer.Host == ss.Config.Self.Host {
+				if peer.Host == ss.Config.OpenAudio.Server.Hostname {
 					continue
 				}
 

@@ -26,11 +26,6 @@ func recoverSigner(input string, signature []byte) (common.Address, error) {
 }
 
 func (ss *MediorumServer) checkBasicAuth(user, pass string, c echo.Context) (bool, error) {
-	// for dev:
-	if ss.Config.privateKey == nil {
-		return true, nil
-	}
-
 	// check age
 	ts, err := strconv.ParseInt(user, 0, 64)
 	if err != nil {
@@ -144,10 +139,10 @@ func (ss *MediorumServer) requireBodySignedByOwner(next echo.HandlerFunc) echo.H
 		}
 
 		// check signature is from delegate owner wallet
-		if !strings.EqualFold(sig.SignerWallet, ss.Config.Self.Wallet) {
+		if !strings.EqualFold(sig.SignerWallet, ss.Config.OpenAudio.Operator.EthAddress) {
 			return c.JSON(401, map[string]string{
 				"error":  "signature not from owner",
-				"detail": fmt.Sprintf("signer: %s, owner: %s", sig.SignerWallet, ss.Config.Self.Wallet),
+				"detail": fmt.Sprintf("signer: %s, owner: %s", sig.SignerWallet, ss.Config.OpenAudio.Operator.EthAddress),
 			})
 		}
 

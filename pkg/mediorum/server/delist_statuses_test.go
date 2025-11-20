@@ -24,7 +24,7 @@ func TestPollDelistStatuses(t *testing.T) {
 	ss := testNetwork[0]
 
 	// Double-check we're in test mode before truncating tables
-	assert.Equal(t, "test", ss.Config.Env)
+	assert.Equal(t, "openaudio-devnet", ss.Config.GenesisDoc.ChainID)
 
 	mockResponse := MockedDelistResponse{
 		Result: struct {

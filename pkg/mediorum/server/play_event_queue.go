@@ -131,7 +131,7 @@ func (ss *MediorumServer) processPlayRecordBatch(ctx context.Context) error {
 	}
 
 	// sign plays event payload with mediorum priv key
-	signedPlaysEvent, err := signature.SignCoreBytes(playsTx, ss.Config.privateKey)
+	signedPlaysEvent, err := signature.SignCoreBytes(playsTx, ss.Config.PrivKey)
 	if err != nil {
 		ss.logger.Error("core error signing plays proto event", zap.Error(err))
 		return err

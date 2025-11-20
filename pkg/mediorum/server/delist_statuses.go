@@ -175,13 +175,13 @@ func (ss *MediorumServer) pollDelistStatuses(ctx context.Context, entity DelistE
 	ss.pgPool.QueryRow(ctx, `SELECT created_at FROM delist_status_cursor WHERE host = $1 AND entity = $2`, endpoint, entity).Scan(&cursorBefore)
 
 	pollMoreEndpoint := fmt.Sprintf("%s/statuses/%s?cursor=%s&batchSize=%d", endpoint, entity, url.QueryEscape(cursorBefore.Format(time.RFC3339Nano)), DelistBatchSize)
-	req, err := signature.SignedGet(ctx, pollMoreEndpoint, ss.Config.privateKey, ss.Config.Self.Host)
+	req, err := signature.SignedGet(ctx, pollMoreEndpoint, ss.Config.PrivKey, ss.Config.OpenAudio.Server.Hostname)
 	if err != nil {
 		return err
 	}
 
 	client := http.Client{Timeout: HTTPTimeout}
-	req.Header.Set("User-Agent", "mediorum "+ss.Config.Self.Host)
+	req.Header.Set("User-Agent", "mediorum "+ss.Config.OpenAudio.Server.Hostname)
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

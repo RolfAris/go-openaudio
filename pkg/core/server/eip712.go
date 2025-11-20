@@ -30,7 +30,7 @@ const (
 
 func DeterministicEntityManagerAddressAndChainID(chainID string) (string, uint64) {
 	switch chainID {
-	case "mainnet-alpha-beta":
+	case "audius-mainnet-alpha-beta":
 		return ProdAcdcAddress, ProdAcdcChainID
 	case "audius-testnet-alpha":
 		return StageAcdcAddress, StageAcdcChainID

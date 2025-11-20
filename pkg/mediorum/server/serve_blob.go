@@ -306,12 +306,12 @@ func (ss *MediorumServer) logTrackListen(c echo.Context) {
 	}
 
 	// as per CN `userId: req.userId ?? delegateOwnerWallet`
-	userId := ss.Config.Self.Wallet
+	userId := ss.Config.OpenAudio.Operator.ProposerAddress
 	if sig.Data.UserID != 0 {
 		userId = strconv.Itoa(sig.Data.UserID)
 	}
 
-	signatureData, err := signature.GenerateListenTimestampAndSignature(ss.Config.privateKey)
+	signatureData, err := signature.GenerateListenTimestampAndSignature(ss.Config.PrivKey)
 	if err != nil {
 		ss.logger.Error("unable to build request", zap.Error(err))
 		return
@@ -482,7 +482,7 @@ func (ss *MediorumServer) serveLegacyBlobAnalysis(c echo.Context) error {
 }
 
 func (ss *MediorumServer) serveTrack(c echo.Context) error {
-	if ss.Config.Env != "dev" {
+	if ss.Config.GenesisDoc.ChainID != "openaudio-devnet" {
 		return c.String(404, "not found")
 	}
 

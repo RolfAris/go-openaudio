@@ -35,7 +35,7 @@ func (ss *MediorumServer) recordStorageAndDbSize(ctx context.Context) error {
 		// only do this once every 6 hours, even if the server restarts
 		var lastStatus StorageAndDbSize
 		err := ss.crud.DB.WithContext(ctx).
-			Where("host = ?", ss.Config.Self.Host).
+			Where("host = ?", ss.Config.OpenAudio.Server.Hostname).
 			Order("logged_at desc").
 			First(&lastStatus).
 			Error
@@ -47,13 +47,13 @@ func (ss *MediorumServer) recordStorageAndDbSize(ctx context.Context) error {
 			return
 		}
 
-		blobStorePrefix, _, foundBlobStore := strings.Cut(ss.Config.BlobStoreDSN, "://")
+		blobStorePrefix, _, foundBlobStore := strings.Cut(ss.Config.OpenAudio.Blob.BlobStoreDSN, "://")
 		if !foundBlobStore {
 			blobStorePrefix = ""
 		}
 		status := StorageAndDbSize{
 			LoggedAt:           time.Now(),
-			Host:               ss.Config.Self.Host,
+			Host:               ss.Config.OpenAudio.Server.Hostname,
 			StorageBackend:     blobStorePrefix,
 			DbUsed:             ss.databaseSize,
 			MediorumDiskUsed:   ss.mediorumPathUsed,
@@ -179,7 +179,7 @@ func (ss *MediorumServer) updateDiskAndDbStatus(ctx context.Context) {
 	ss.uploadsCount = uploadsCount
 	ss.uploadsCountErr = errStr
 
-	mediorumTotal, mediorumFree, err := getDiskStatus(ss.Config.Dir)
+	mediorumTotal, mediorumFree, err := getDiskStatus(ss.Config.OpenAudio.Storage.Dir)
 	if err == nil {
 		ss.mediorumPathFree = mediorumFree
 		ss.mediorumPathUsed = mediorumTotal - mediorumFree
@@ -187,9 +187,9 @@ func (ss *MediorumServer) updateDiskAndDbStatus(ctx context.Context) {
 	} else {
 		slog.Error("Error getting mediorum disk status", "err", err)
 	}
-	ss.storageExpectation, err = getStorageExpectation(ctx, ss.pgPool, ss.Config.ReplicationFactor)
+	ss.storageExpectation, err = getStorageExpectation(ctx, ss.pgPool, int(ss.Config.GenesisData.Storage.ReplicationFactor))
 	slog.Info("Storage expectation", "size", ss.storageExpectation)
-	slog.Info("Replication factor", "replicationFactor", ss.Config.ReplicationFactor)
+	slog.Info("Replication factor", "replicationFactor", ss.Config.GenesisData.Storage.ReplicationFactor)
 	slog.Info("running job")
 	if err != nil {
 		slog.Error("Error getting storage expectation", "err", err.Error())
@@ -301,7 +301,7 @@ func (ss *MediorumServer) serveStorageAndDbLogs(c echo.Context) error {
 
 	host := c.QueryParam("host")
 	if host == "" {
-		host = ss.Config.Self.Host
+		host = ss.Config.OpenAudio.Server.Hostname
 	}
 	dbQuery = dbQuery.Where("host = ?", host)
 

@@ -38,7 +38,7 @@ var (
 
 func (ss *MediorumServer) getMetrics(c echo.Context) error {
 	m := Metrics{}
-	m.Host = ss.Config.Self.Host
+	m.Host = ss.Config.OpenAudio.Server.Hostname
 	m.Uploads = ss.uploadsCount
 	m.OutboxSizes = ss.crud.GetOutboxSizes()
 	m.RedirectCacheSize = ss.redirectCache.Len()

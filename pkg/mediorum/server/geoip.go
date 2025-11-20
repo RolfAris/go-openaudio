@@ -94,7 +94,7 @@ func (ss *MediorumServer) getGeoFromIP(ip string) (*GeoResult, error) {
 	}
 
 	// use mock location for local
-	if ss.Config.Env == "dev" || ss.Config.Env == "local" {
+	if ss.Config.GenesisDoc.ChainID == "openaudio-devnet" {
 		f := faker.New()
 		addr := f.Address()
 		if result.City == "" {
