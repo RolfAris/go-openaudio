@@ -19,10 +19,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// InitNode initializes a new OpenAudio node at cfg.CometBFT.RootDir.
-// It creates CometBFT keys, a default genesis, and writes merged configuration.
-func InitNode(cfg *Config, preset string, ethKey string) error {
-	rootDir := cfg.CometBFT.RootDir
+// createNodeDirectories creates the necessary directories for a node.
+func createNodeDirectories(rootDir string) error {
 	configDir := filepath.Join(rootDir, "config")
 	dataDir := filepath.Join(rootDir, "data")
 
@@ -31,10 +29,12 @@ func InitNode(cfg *Config, preset string, ethKey string) error {
 			return fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}
+	return nil
+}
 
-	privValKeyFile := cfg.CometBFT.PrivValidatorKeyFile()
-	privValStateFile := cfg.CometBFT.PrivValidatorStateFile()
-
+// generateNodeKeys creates validator and node keys for a node.
+// Returns the FilePV and NodeKey, or an error.
+func generateNodeKeys(privValKeyFile, privValStateFile, nodeKeyFile string) (*privval.FilePV, *p2p.NodeKey, error) {
 	var pv *privval.FilePV
 	if common.FileExists(privValKeyFile) {
 		pv = privval.LoadFilePV(privValKeyFile, privValStateFile)
@@ -43,14 +43,36 @@ func InitNode(cfg *Config, preset string, ethKey string) error {
 			return secp256k1.GenPrivKey(), nil
 		})
 		if err != nil {
-			return fmt.Errorf("gen file pv: %w", err)
+			return nil, nil, fmt.Errorf("gen file pv: %w", err)
 		}
 		genFilePV.Save()
 		pv = privval.LoadFilePV(privValKeyFile, privValStateFile)
 	}
 
-	if _, err := p2p.LoadOrGenNodeKey(cfg.CometBFT.NodeKeyFile()); err != nil {
-		return fmt.Errorf("generate node key: %w", err)
+	nodeKey, err := p2p.LoadOrGenNodeKey(nodeKeyFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generate node key: %w", err)
+	}
+
+	return pv, nodeKey, nil
+}
+
+// InitNode initializes a new OpenAudio node at cfg.CometBFT.RootDir.
+// It creates CometBFT keys, a default genesis, and writes merged configuration.
+func InitNode(cfg *Config, preset string, ethKey string) error {
+	rootDir := cfg.CometBFT.RootDir
+
+	if err := createNodeDirectories(rootDir); err != nil {
+		return err
+	}
+
+	privValKeyFile := cfg.CometBFT.PrivValidatorKeyFile()
+	privValStateFile := cfg.CometBFT.PrivValidatorStateFile()
+	nodeKeyFile := cfg.CometBFT.NodeKeyFile()
+
+	pv, _, err := generateNodeKeys(privValKeyFile, privValStateFile, nodeKeyFile)
+	if err != nil {
+		return err
 	}
 
 	genFile := cfg.CometBFT.GenesisFile()
