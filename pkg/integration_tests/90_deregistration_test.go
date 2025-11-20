@@ -3,7 +3,6 @@ package integration_tests
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -102,7 +101,6 @@ func TestDeregisterNode(t *testing.T) {
 		err = json.Unmarshal(body, &r)
 		require.NoError(t, err, "failed to marshall comet rpc response body")
 		if r.Result.ValidatorInfo.VotingPower != 0 {
-			err = errors.New("Voting power is still non-zero")
 			time.Sleep(2 * time.Second)
 			continue
 		}

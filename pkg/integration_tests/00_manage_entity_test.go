@@ -29,12 +29,6 @@ func TestEntityManager(t *testing.T) {
 	// Get the expected signer address
 	expectedSigner := crypto.PubkeyToAddress(privateKey.PublicKey).String()
 
-	// Use dev config values for signing (must match what the server uses)
-	mockConfig := &config.Config{
-		AcdcEntityManagerAddress: config.DevAcdcAddress,
-		AcdcChainID:              config.DevAcdcChainID,
-	}
-
 	t.Run("ValidSignature", func(t *testing.T) {
 		manageEntity := &corev1.ManageEntityLegacy{
 			UserId:     1,
@@ -47,7 +41,8 @@ func TestEntityManager(t *testing.T) {
 		}
 
 		// Sign the message with EIP712
-		err = server.SignManageEntity(mockConfig, manageEntity, privateKey)
+
+		err = server.SignManageEntity(config.DevAcdcAddress, config.DevAcdcChainID, manageEntity, privateKey)
 		assert.NoError(t, err)
 
 		signedManageEntity := &corev1.SignedTransaction{
