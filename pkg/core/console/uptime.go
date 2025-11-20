@@ -161,8 +161,8 @@ func (cs *Console) generateEndpoints(ctx context.Context, activeEndpointURL stri
 			history, err := cs.db.GetValidatorHistoryForID(
 				ctx,
 				db.GetValidatorHistoryForIDParams{
-					ep.Id,
-					ep.ServiceType,
+					SpID:        ep.Id,
+					ServiceType: ep.ServiceType,
 				},
 			)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {

@@ -89,8 +89,8 @@ func (cs *Console) adjudicateFragment(c echo.Context) error {
 			history, err := cs.db.GetValidatorHistoryForID(
 				ctx,
 				db.GetValidatorHistoryForIDParams{
-					ep.Id,
-					ep.ServiceType,
+					SpID:        ep.Id,
+					ServiceType: ep.ServiceType,
 				},
 			)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
