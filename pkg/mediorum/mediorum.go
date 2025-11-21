@@ -10,14 +10,13 @@ import (
 
 	_ "embed"
 
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	coreServer "github.com/OpenAudio/go-openaudio/pkg/core/server"
-	"github.com/OpenAudio/go-openaudio/pkg/httputil"
 	"github.com/OpenAudio/go-openaudio/pkg/lifecycle"
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/ethcontracts"
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/server"
 	"github.com/OpenAudio/go-openaudio/pkg/pos"
 	"github.com/OpenAudio/go-openaudio/pkg/registrar"
-	"github.com/OpenAudio/go-openaudio/pkg/version"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
@@ -30,7 +29,7 @@ func Run(lc *lifecycle.Lifecycle, logger *zap.Logger, posChannel chan pos.PoSReq
 	return runMediorum(lc, logger, env, posChannel, storageService, core)
 }
 
-func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {
+func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, config *config.Config, posChannel chan pos.PoSRequest, storageService *server.StorageService, core *coreServer.CoreService) error {
 	logger = logger.With(zap.String("service", "mediorum"))
 
 	isProd := mediorumEnv == "prod"
@@ -99,48 +98,6 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		}()
 	}
 
-	// set dev defaults
-	replicationFactor := 3
-	spOwnerWallet := walletAddress
-	dir := fmt.Sprintf("/tmp/mediorum_dev_%d", spID)
-	blobStoreDSN := ""
-	moveFromBlobStoreDSN := ""
-
-	notDev := isProd || isStage
-	if notDev {
-		replicationFactor = 3
-		spOwnerWallet = os.Getenv("spOwnerWallet")
-		dir = "/tmp/mediorum"
-		blobStoreDSN = os.Getenv("AUDIUS_STORAGE_DRIVER_URL")
-		moveFromBlobStoreDSN = os.Getenv("AUDIUS_STORAGE_DRIVER_URL_MOVE_FROM")
-	}
-
-	config := server.MediorumConfig{
-		Self: registrar.Peer{
-			Host:   httputil.RemoveTrailingSlash(strings.ToLower(nodeEndpoint)),
-			Wallet: strings.ToLower(walletAddress),
-		},
-		ListenPort:                "1991",
-		Peers:                     peers,
-		Signers:                   signers,
-		ReplicationFactor:         replicationFactor,
-		PrivateKey:                privateKeyHex,
-		Dir:                       dir,
-		PostgresDSN:               getenvWithDefault("dbUrl", "postgres://postgres:postgres@db:5432/audius_creator_node"),
-		BlobStoreDSN:              blobStoreDSN,
-		MoveFromBlobStoreDSN:      moveFromBlobStoreDSN,
-		TrustedNotifierID:         trustedNotifierID,
-		SPID:                      spID,
-		SPOwnerWallet:             spOwnerWallet,
-		GitSHA:                    os.Getenv("GIT_SHA"),
-		AudiusDockerCompose:       os.Getenv("AUDIUS_DOCKER_COMPOSE_GIT_SHA"),
-		AutoUpgradeEnabled:        os.Getenv("autoUpgradeEnabled") == "true",
-		StoreAll:                  os.Getenv("STORE_ALL") == "true",
-		VersionJson:               version.Version,
-		DiscoveryListensEndpoints: discoveryListensEndpoints(),
-		LogLevel:                  getenvWithDefault("OPENAUDIO_LOG_LEVEL", "info"),
-	}
-
 	ss, err := server.New(lc, logger, config, g, posChannel, core)
 	if err != nil {
 		return fmt.Errorf("failed to create server: %v", err)
@@ -156,12 +113,4 @@ func getenvWithDefault(key string, fallback string) string {
 		return fallback
 	}
 	return val
-}
-
-func discoveryListensEndpoints() []string {
-	endpoints := os.Getenv("discoveryListensEndpoints")
-	if endpoints == "" {
-		return []string{}
-	}
-	return strings.Split(endpoints, ",")
 }

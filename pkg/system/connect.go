@@ -21,8 +21,16 @@ type SystemService struct {
 
 var _ v1connect.SystemServiceHandler = (*SystemService)(nil)
 
-func NewSystemService(core *server.CoreService, storage *storageServer.StorageService) *SystemService {
-	return &SystemService{core: core, storage: storage}
+func NewSystemService() *SystemService {
+	return &SystemService{}
+}
+
+func (s *SystemService) SetCoreService(core *server.CoreService) {
+	s.core = core
+}
+
+func (s *SystemService) SetStorageService(storage *storageServer.StorageService) {
+	s.storage = storage
 }
 
 // GetHealth implements v1connect.SystemServiceHandler.

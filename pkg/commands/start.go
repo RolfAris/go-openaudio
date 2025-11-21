@@ -20,7 +20,7 @@ func NewStartCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			home, _ := cmd.Flags().GetString("home")
 			if home == "" {
-				home = filepath.Join(os.Getenv("HOME"), ".openaudio")
+				home = filepath.Join(os.Getenv("OPENAUDIO_HOME"), ".openaudio")
 			}
 
 			envFile, _ := cmd.Flags().GetString("env-file")

@@ -18,6 +18,7 @@ import (
 	"github.com/OpenAudio/go-openaudio/pkg/api/core/v1/v1connect"
 	v1beta1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1beta1"
 	ddexv1beta1 "github.com/OpenAudio/go-openaudio/pkg/api/ddex/v1beta1"
+	ethv1connect "github.com/OpenAudio/go-openaudio/pkg/api/eth/v1/v1connect"
 	storagev1 "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1"
 	storagev1connect "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1/v1connect"
 	"github.com/OpenAudio/go-openaudio/pkg/common"
@@ -33,6 +34,7 @@ type CoreService struct {
 	coreMu         sync.RWMutex
 	core           *Server
 	storageService storagev1connect.StorageServiceHandler
+	ethService     ethv1connect.EthServiceHandler
 }
 
 func NewCoreService() *CoreService {
@@ -48,6 +50,10 @@ func (c *CoreService) SetCore(core *Server) {
 
 func (c *CoreService) SetStorageService(storageService storagev1connect.StorageServiceHandler) {
 	c.storageService = storageService
+}
+
+func (c *CoreService) SetEthService(ethService ethv1connect.EthServiceHandler) {
+	c.ethService = ethService
 }
 
 var _ v1connect.CoreServiceHandler = (*CoreService)(nil)

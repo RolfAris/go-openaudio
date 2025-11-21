@@ -165,7 +165,7 @@ func (e *EthService) IsDuplicateDelegateWallet(ctx context.Context, req *connect
 
 // For development purposes only
 func (e *EthService) Register(ctx context.Context, req *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
-	if e.env != "dev" && e.env != "test" {
+	if e.chainID != "openaudio-devnet" {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not implemented"))
 	}
 

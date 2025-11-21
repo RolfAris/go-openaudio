@@ -51,7 +51,7 @@ func (s *Server) startEchoServer(ctx context.Context) error {
 
 	done := make(chan error, 1)
 	go func() {
-		serverAddr := fmt.Sprintf("%s:%s", s.config.OpenAudio.Server.Hostname, s.config.OpenAudio.Server.Port)
+		serverAddr := fmt.Sprintf("%s:%s", s.config.OpenAudio.Server.Hostname, s.config.OpenAudio.Server.HTTP.Port)
 		err := s.httpServer.Start(serverAddr)
 		if err != nil && err != http.ErrServerClosed {
 			s.logger.Error("echo server error", zap.Error(err))

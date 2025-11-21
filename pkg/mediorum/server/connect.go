@@ -10,6 +10,8 @@ import (
 	"connectrpc.com/connect"
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/storage/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/api/storage/v1/v1connect"
+	coreServer "github.com/OpenAudio/go-openaudio/pkg/core/server"
+	"github.com/OpenAudio/go-openaudio/pkg/eth"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -17,10 +19,21 @@ var _ v1connect.StorageServiceHandler = (*StorageService)(nil)
 
 type StorageService struct {
 	mediorum *MediorumServer
+
+	coreService *coreServer.CoreService
+	ethService  *eth.EthService
 }
 
 func NewStorageService() *StorageService {
 	return &StorageService{}
+}
+
+func (s *StorageService) SetCoreService(core *coreServer.CoreService) {
+	s.coreService = core
+}
+
+func (s *StorageService) SetEthService(eth *eth.EthService) {
+	s.ethService = eth
 }
 
 func (s *StorageService) SetMediorum(mediorum *MediorumServer) {

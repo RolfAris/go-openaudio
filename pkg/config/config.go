@@ -88,11 +88,20 @@ func (c *Config) SetHome(home string) {
 	// recompute derived directories
 	c.OpenAudio.Blob.BlobStoreDSN = "file://" + filepath.Join(home, DefaultDataDir, DefaultBlobsDir)
 	c.OpenAudio.Server.Socket.Path = filepath.Join(home, DefaultSocketFileName)
-	c.OpenAudio.Server.TLS.CertDir = filepath.Join(home, DefaultConfigDir, DefaultCertsDir)
-	c.OpenAudio.Server.TLS.CacheDir = filepath.Join(home, DefaultConfigDir, DefaultCacheDir)
+
+	// Update HTTPS cert/cache dirs
+	if c.OpenAudio.Server.HTTPS != nil {
+		c.OpenAudio.Server.HTTPS.CertDir = filepath.Join(home, DefaultConfigDir, DefaultCertsDir)
+		c.OpenAudio.Server.HTTPS.CacheDir = filepath.Join(home, DefaultConfigDir, DefaultCacheDir)
+	}
+
+	// Update GRPCS cert/cache dirs
+	if c.OpenAudio.Server.GRPCS != nil {
+		c.OpenAudio.Server.GRPCS.CertDir = filepath.Join(home, DefaultConfigDir, DefaultCertsDir)
+		c.OpenAudio.Server.GRPCS.CacheDir = filepath.Join(home, DefaultConfigDir, DefaultCacheDir)
+	}
 
 	// propagate home for server nested configs that still hold it
-	c.OpenAudio.Server.TLS.Home = home
 	c.OpenAudio.Server.Console.Home = home
 	c.OpenAudio.Server.Socket.Home = home
 }
@@ -201,43 +210,55 @@ func DefaultOperatorConfig() *OperatorConfig {
 }
 
 type ServerConfig struct {
-	Home      string         `mapstructure:"home"`
-	Port      string         `mapstructure:"port"`
-	HTTPSPort string         `mapstructure:"https_port"`
-	Hostname  string         `mapstructure:"hostname"`
-	H2C       bool           `mapstructure:"h2c"`
-	TLS       *TLSConfig     `mapstructure:"tls"`
-	Console   *ConsoleConfig `mapstructure:"console"`
-	Socket    *SocketConfig  `mapstructure:"socket"`
-	Echo      *EchoConfig    `mapstructure:"echo"`
+	Home     string         `mapstructure:"home"`
+	Hostname string         `mapstructure:"hostname"`
+	HTTP     *HTTPConfig    `mapstructure:"http"`
+	HTTPS    *HTTPSConfig   `mapstructure:"https"`
+	GRPC     *GRPCConfig    `mapstructure:"grpc"`
+	GRPCS    *GRPCSConfig   `mapstructure:"grpcs"`
+	Socket   *SocketConfig  `mapstructure:"socket"`
+	Console  *ConsoleConfig `mapstructure:"console"`
+	Echo     *EchoConfig    `mapstructure:"echo"`
 }
 
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
-		Home:      DefaultHomeDir,
-		Port:      DefaultHTTPPort,
-		HTTPSPort: DefaultHTTPSPort,
-		Hostname:  DefaultHostname,
-		H2C:       true,
-		TLS:       DefaultTLSConfig(),
-		Console:   DefaultConsoleConfig(),
-		Socket:    DefaultSocketConfig(),
-		Echo:      DefaultEchoConfig(),
+		Home:     DefaultHomeDir,
+		Hostname: DefaultHostname,
+		HTTP:     DefaultHTTPConfig(),
+		HTTPS:    DefaultHTTPSConfig(),
+		GRPC:     DefaultGRPCConfig(),
+		GRPCS:    DefaultGRPCSConfig(),
+		Socket:   DefaultSocketConfig(),
+		Console:  DefaultConsoleConfig(),
+		Echo:     DefaultEchoConfig(),
 	}
 }
 
-type TLSConfig struct {
-	Home       string `mapstructure:"home"`
+type HTTPConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Port    string `mapstructure:"port"`
+}
+
+func DefaultHTTPConfig() *HTTPConfig {
+	return &HTTPConfig{
+		Enabled: true,
+		Port:    DefaultHTTPPort,
+	}
+}
+
+type HTTPSConfig struct {
 	Enabled    bool   `mapstructure:"enabled"`
+	Port       string `mapstructure:"port"`
 	SelfSigned bool   `mapstructure:"self_signed"`
 	CertDir    string `mapstructure:"cert_dir"`
 	CacheDir   string `mapstructure:"cache_dir"`
 }
 
-func DefaultTLSConfig() *TLSConfig {
-	return &TLSConfig{
-		Home:       DefaultHomeDir,
+func DefaultHTTPSConfig() *HTTPSConfig {
+	return &HTTPSConfig{
 		Enabled:    false,
+		Port:       DefaultHTTPSPort,
 		SelfSigned: false,
 		CertDir:    filepath.Join(DefaultHomeDir, DefaultConfigDir, DefaultCertsDir),
 		CacheDir:   filepath.Join(DefaultHomeDir, DefaultConfigDir, DefaultCacheDir),
@@ -281,6 +302,36 @@ func DefaultEchoConfig() *EchoConfig {
 	return &EchoConfig{
 		IPRateLimit:    DefaultIPRateLimit,
 		RequestTimeout: DefaultRequestTimeout,
+	}
+}
+
+type GRPCConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Port    string `mapstructure:"port"`
+}
+
+func DefaultGRPCConfig() *GRPCConfig {
+	return &GRPCConfig{
+		Enabled: false,
+		Port:    "50051",
+	}
+}
+
+type GRPCSConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	Port       string `mapstructure:"port"`
+	SelfSigned bool   `mapstructure:"self_signed"`
+	CertDir    string `mapstructure:"cert_dir"`
+	CacheDir   string `mapstructure:"cache_dir"`
+}
+
+func DefaultGRPCSConfig() *GRPCSConfig {
+	return &GRPCSConfig{
+		Enabled:    false,
+		Port:       "50052",
+		SelfSigned: false,
+		CertDir:    filepath.Join(DefaultHomeDir, DefaultConfigDir, DefaultCertsDir),
+		CacheDir:   filepath.Join(DefaultHomeDir, DefaultConfigDir, DefaultCacheDir),
 	}
 }
 

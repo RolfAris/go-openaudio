@@ -12,6 +12,7 @@ import (
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/eth/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/common"
+	"github.com/OpenAudio/go-openaudio/pkg/config"
 	"github.com/OpenAudio/go-openaudio/pkg/eth/contracts"
 	"github.com/OpenAudio/go-openaudio/pkg/eth/contracts/gen"
 	"github.com/OpenAudio/go-openaudio/pkg/eth/db"
@@ -35,7 +36,7 @@ type EthService struct {
 	rpcURL          string
 	dbURL           string
 	registryAddress string
-	env             string
+	chainID         string
 
 	rpc          *ethclient.Client
 	db           *db.Queries
@@ -54,13 +55,13 @@ type fundingRoundMetadata struct {
 	totalStakedAmount     int64
 }
 
-func NewEthService(dbURL, rpcURL, registryAddress string, logger *zap.Logger, environment string) *EthService {
+func NewEthService(config *config.Config, logger *zap.Logger) *EthService {
 	return &EthService{
 		logger:          logger.With(zap.String("service", "eth")),
-		rpcURL:          rpcURL,
-		dbURL:           dbURL,
-		registryAddress: registryAddress,
-		env:             environment,
+		rpcURL:          config.OpenAudio.Eth.RpcURL,
+		dbURL:           config.OpenAudio.DB.PostgresDSN,
+		registryAddress: config.OpenAudio.Eth.RegistryAddress,
+		chainID:         config.GenesisDoc.ChainID,
 		fundingRound:    &fundingRoundMetadata{},
 	}
 }
@@ -138,8 +139,6 @@ func (eth *EthService) Run(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
-
-	return nil
 }
 
 func (eth *EthService) startEthDataManager(ctx context.Context) error {
