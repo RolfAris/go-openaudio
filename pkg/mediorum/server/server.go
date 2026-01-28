@@ -385,8 +385,13 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 	routes.GET("/content/:jobID/:variant", ss.serveImage, ss.requireHealthy)
 
 	routes.GET("/contact", ss.serveContact)
-	routes.GET("/health_check", ss.serveHealthCheck)
-	routes.HEAD("/health_check", ss.serveHealthCheck)
+
+	// Legacy endpoint for backward compatibility with old servers
+	routes.GET("/health_check", ss.serveHealthCheckLegacy)
+	routes.HEAD("/health_check", ss.serveHealthCheckLegacy)
+	// New endpoint with consolidated health data
+	routes.GET("/health-check", ss.serveMediorumHealthCheck)
+
 	routes.GET("/ip_check", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"data": c.RealIP(), // client/requestor IP
