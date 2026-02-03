@@ -493,10 +493,6 @@ func startEchoProxy(hostUrl *url.URL, logger *zap.Logger, coreService *coreServe
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Logger(), middleware.Recover(), common.InjectRealIP())
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{http.MethodGet},
-	}))
 
 	rpcGroup := e.Group("")
 	rpcGroup.Use(common.CORS())
@@ -561,19 +557,21 @@ func startEchoProxy(hostUrl *url.URL, logger *zap.Logger, coreService *coreServe
 		}
 	}()
 
-	e.GET("/", func(c echo.Context) error {
+	baseRoutes := e.Group("")
+	baseRoutes.Use(common.CORS())
+	baseRoutes.GET("/", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]int{"a": 440})
 	})
-
-	e.GET("/console", func(c echo.Context) error {
+	baseRoutes.GET("/console", func(c echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/console/overview")
 	})
+	baseRoutes.GET("/health-check", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, getHealthCheckResponse(hostUrl, coreService, storageService))
+	})
 
-	proxies := []proxyConfig{
-		{"/console/*", "http://localhost:26659"},
-		{"/core/*", "http://localhost:26659"},
-	}
-
+	baseRoutes.GET("/health_check", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, getHealthCheckResponse(hostUrl, coreService, storageService))
+	})
 	locationHandler := func(c echo.Context) error {
 		type ipInfoResponse struct {
 			Country string `json:"country"`
@@ -613,33 +611,35 @@ func startEchoProxy(hostUrl *url.URL, logger *zap.Logger, coreService *coreServe
 			},
 		})
 	}
+	baseRoutes.GET("/version", locationHandler)
+	baseRoutes.GET("/location", locationHandler)
 
-	e.GET("/health-check", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, getHealthCheckResponse(hostUrl, coreService, storageService))
-	})
-
-	e.GET("/health_check", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, getHealthCheckResponse(hostUrl, coreService, storageService))
-	})
-
-	e.GET("/version", locationHandler)
-	e.GET("/location", locationHandler)
-
+	proxies := []proxyConfig{
+		{"/console/*", "http://localhost:26659"},
+		{"/core/*", "http://localhost:26659"},
+	}
 	if isUpTimeEnabled(hostUrl) {
 		proxies = append(proxies, proxyConfig{"/d_api/*", "http://localhost:1996"})
 	}
-
 	if isStorageEnabled() {
 		proxies = append(proxies, proxyConfig{"/*", "http://localhost:1991"})
 	}
 
+	// Proxy group does not have CORS middleware - we handle CORS via ModifyResponse
+	proxyGroup := e.Group("")
 	for _, proxy := range proxies {
 		target, err := url.Parse(proxy.target)
 		if err != nil {
 			logger.Error("Failed to parse URL", zap.Error(err))
 			continue
 		}
-		e.Any(proxy.path, echo.WrapHandler(httputil.NewSingleHostReverseProxy(target)))
+		reverseProxy := httputil.NewSingleHostReverseProxy(target)
+		reverseProxy.ModifyResponse = func(resp *http.Response) error {
+			// Replace CORS headers to ensure no duplicates
+			common.ReplaceCORSHeaders(resp)
+			return nil
+		}
+		proxyGroup.Any(proxy.path, echo.WrapHandler(reverseProxy))
 	}
 
 	config := getEchoServerConfig(hostUrl)
