@@ -79,6 +79,16 @@ func getSyncPhaseText(phase v1.GetStatusResponse_SyncInfo_StateSyncInfo_Phase) s
 	}
 }
 
+func formatBlockDiff(blockSync *v1.GetStatusResponse_SyncInfo_BlockSyncInfo) string {
+	if blockSync == nil {
+		return "Unknown"
+	}
+	if blockSync.BlockDiff < 0 || blockSync.HeadHeight == 0 {
+		return "Unknown"
+	}
+	return fmt.Sprintf("%d blocks behind", blockSync.BlockDiff)
+}
+
 templ (p *Pages) OverviewCriticalFragment(status *v1.GetStatusResponse) {
 	<!-- Critical Status Overview -->
 	<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -95,28 +105,76 @@ templ (p *Pages) OverviewCriticalFragment(status *v1.GetStatusResponse) {
 			<div class="text-sm text-secondary">Node Status</div>
 		</div>
 		<div class="bg-secondary rounded-lg p-4 text-center">
-			<div class="text-2xl font-bold">
-				if status.SyncInfo != nil && status.SyncInfo.Synced {
+			if status.SyncInfo != nil && status.SyncInfo.Synced {
+				<div class="text-2xl font-bold">
 					@components.StatusGreenLg("Synced")
 					<span>&nbsp;Synced</span>
-				} else {
+				</div>
+				<div class="text-sm text-secondary">Sync Status</div>
+			} else if status.SyncInfo != nil && status.SyncInfo.GetStateSync() != nil {
+				<!-- State Sync in Progress -->
+				<div class="space-y-2">
+					<div class="text-2xl font-bold">
+						@components.StatusOrangeLg("State Sync")
+						<span>&nbsp;State Sync</span>
+					</div>
+					<div class="text-sm text-secondary">
+						{ getSyncPhaseText(status.SyncInfo.GetStateSync().Phase) }
+					</div>
+					if status.SyncInfo.GetStateSync().Snapshot != nil {
+						<div class="text-xs text-secondary">
+							Snapshot: { fmt.Sprintf("%d", status.SyncInfo.GetStateSync().Snapshot.Height) }
+						</div>
+					}
+					if status.SyncInfo.GetStateSync().Snapshot != nil && status.SyncInfo.GetStateSync().Snapshot.ChunkCount > 0 {
+						<div class="mt-2">
+							<div class="text-sm text-secondary mb-1">
+								{ fmt.Sprintf("%d / %d chunks", status.SyncInfo.GetStateSync().DownloadedChunks, status.SyncInfo.GetStateSync().Snapshot.ChunkCount) }
+							</div>
+							<div class="flex justify-center mt-1">
+								<div class="w-3/5 border bg-secondary border-white rounded-full h-3 overflow-hidden">
+									<div class="h-full rounded-full transition-all duration-300" style={ fmt.Sprintf("width: %s; background-color: white", formatPercentage(status.SyncInfo.GetStateSync().DownloadedChunks, status.SyncInfo.GetStateSync().Snapshot.ChunkCount)) }></div>
+								</div>
+							</div>
+						</div>
+					}
+				</div>
+			} else if status.SyncInfo != nil && status.SyncInfo.GetBlockSync() != nil {
+				<!-- Block Sync in Progress -->
+				<div class="space-y-2">
+					<div class="text-xl font-bold">
+						@components.StatusOrangeLg("Block Sync")
+						<span>&nbsp;Block Sync</span>
+					</div>
+					<div class="text-xs text-secondary">
+						{ formatBlockDiff(status.SyncInfo.GetBlockSync()) }
+					</div>
+				</div>
+			} else {
+				<div class="text-2xl font-bold">
 					@components.StatusOrangeLg("Syncing")
 					<span>&nbsp;Syncing</span>
-				}
-			</div>
-			<div class="text-sm text-secondary">Sync Status</div>
+				</div>
+				<div class="text-sm text-secondary">Sync Status</div>
+			}
 		</div>
+		<!-- Current Height / Target Height -->
 		<div class="bg-secondary rounded-lg p-4 text-center">
-			<div class="text-2xl font-bold">
-				if status.ChainInfo != nil {
+			if status.ChainInfo != nil && status.ChainInfo.CurrentHeight > 0 {
+				<div class="text-2xl font-bold">
 					@p.components.Link("/block/%d", status.ChainInfo.CurrentHeight) {
 						{ fmt.Sprintf("%d", status.ChainInfo.CurrentHeight) }
 					}
+				</div>
+				if status.SyncInfo != nil && status.SyncInfo.GetStateSync() != nil {
+					<div class="text-sm text-secondary">Target Height</div>
 				} else {
-					N/A
+					<div class="text-sm text-secondary">Current Height</div>
 				}
-			</div>
-			<div class="text-sm text-secondary">Current Height</div>
+			} else {
+				<div class="text-2xl font-bold text-secondary">N/A</div>
+				<div class="text-sm text-secondary">Current Height</div>
+			}
 		</div>
 		<div class="bg-secondary rounded-lg p-4 text-center">
 			<div class="text-2xl font-bold">
@@ -347,7 +405,7 @@ templ (p *Pages) OverviewResourcesFragment(status *v1.GetStatusResponse) {
 							if status.SyncInfo.GetBlockSync() != nil {
 								<div class="bg-secondary rounded-lg p-3">
 									<div class="text-sm font-medium">Block Sync</div>
-									<div class="text-xs text-secondary">{ fmt.Sprintf("%d blocks behind", status.SyncInfo.GetBlockSync().BlockDiff) }</div>
+									<div class="text-xs text-secondary">{ formatBlockDiff(status.SyncInfo.GetBlockSync()) }</div>
 									if status.SyncInfo.GetBlockSync().HeadSource != nil {
 										<div class="text-xs text-secondary">Source: { status.SyncInfo.GetBlockSync().HeadSource.Endpoint }</div>
 									}

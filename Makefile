@@ -3,6 +3,8 @@ WRAPPER_TAG ?= default
 # One of patch, minor, or major
 UPGRADE_TYPE ?= patch
 
+PROD_STATE_SYNC_RPCS ?= https://creatornode.audius.co,https://creatornode2.audius.co
+
 GIT_SHA := $(shell git rev-parse HEAD)
 VERSION_LDFLAG := -X github.com/OpenAudio/go-openaudio/pkg/core/config.Version=$(GIT_SHA)
 
@@ -154,6 +156,28 @@ up: down docker-dev
 		--project-directory='./' \
 		--profile=openaudio-dev \
 		up -d
+
+.PHONY: run-prod
+run-prod: docker-dev
+	@docker rm -f openaudio-prod-ss 2>/dev/null || true
+	@mkdir -p "$$(pwd)/tmp/prod-statesync-data"
+	@docker run --rm -it \
+		--name openaudio-prod-ss \
+		-p 8080:80 -p 8443:443 \
+		-v "$$(pwd)/tmp/prod-statesync-data:/data" \
+		-v "$$(pwd)/cmd:/app/cmd" \
+		-v "$$(pwd)/pkg:/app/pkg" \
+		-v "$$(pwd)/go.mod:/app/go.mod" \
+		-v "$$(pwd)/go.sum:/app/go.sum" \
+		-e OPENAUDIO_HOT_RELOAD=true \
+		-e NETWORK=prod \
+		-e OPENAUDIO_ETL_ENABLED=true \
+		-e OPENAUDIO_STORAGE_ENABLED=false \
+		-e OPENAUDIO_TLS_SELF_SIGNED=true \
+		-e stateSyncEnable=true \
+		-e nodeEndpoint=https://node.oap \
+		-e stateSyncRPCServers="$(PROD_STATE_SYNC_RPCS)" \
+		openaudio/go-openaudio:dev
 
 .PHONY: ss
 ss:

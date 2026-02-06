@@ -79,6 +79,62 @@ func getPgDumpPath(baseDir string) string {
 	return filepath.Join(baseDir, pgDumpFileName)
 }
 
+func (s *Server) updateStateSyncInfo(update func(info *corev1.GetStatusResponse_SyncInfo_StateSyncInfo) *corev1.GetStatusResponse_SyncInfo_StateSyncInfo) {
+	if s.cache == nil {
+		return
+	}
+
+	if err := upsertCache(s.cache.syncInfo, SyncInfoKey, func(syncInfo *corev1.GetStatusResponse_SyncInfo) *corev1.GetStatusResponse_SyncInfo {
+		next := update(syncInfo.GetStateSync())
+		if next == nil {
+			syncInfo.SyncMode = nil
+			return syncInfo
+		}
+
+		syncInfo.SyncMode = &corev1.GetStatusResponse_SyncInfo_StateSync{StateSync: next}
+		return syncInfo
+	}); err != nil {
+		s.logger.Debug("failed to update state sync info", zap.Error(err))
+	}
+}
+
+func (s *Server) clearStateSyncInfo() {
+	s.updateStateSyncInfo(func(_ *corev1.GetStatusResponse_SyncInfo_StateSyncInfo) *corev1.GetStatusResponse_SyncInfo_StateSyncInfo {
+		return nil
+	})
+}
+
+func (s *Server) countReconstructionChunks(height int64) (int64, error) {
+	heightDir := getHeightDir(filepath.Join(s.config.RootDir, tmpReconstructionDir), height)
+	entries, err := os.ReadDir(heightDir)
+	if err != nil {
+		return 0, err
+	}
+
+	var count int64
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "chunk_") && strings.HasSuffix(name, ".gz") {
+			count++
+		}
+	}
+
+	return count, nil
+}
+
+// chunkExists checks if a chunk file already exists on disk
+func (s *Server) chunkExists(height int64, chunkIndex int) bool {
+	tmpDir := filepath.Join(s.config.RootDir, tmpReconstructionDir)
+	heightDir := getHeightDir(tmpDir, height)
+	chunkPath := getChunkPath(heightDir, chunkIndex)
+
+	_, err := os.Stat(chunkPath)
+	return err == nil
+}
+
 func (s *Server) startSnapshotCreator(ctx context.Context) error {
 	s.StartProcess(ProcessStateSnapshotCreator)
 
@@ -688,14 +744,23 @@ func (s *Server) stateSyncLatestBlock(rpcServers []string) (trustHeight int64, t
 			continue
 		}
 		if len(snapshots.Msg.Snapshots) == 0 {
-			s.logger.Warn("no snapshots returned from host %s", zap.String("rpcServer", rpcServer))
+			s.logger.Warn("no snapshots returned from host", zap.String("rpcServer", rpcServer))
 			continue
 		}
 
 		// get last snapshot in list, this is the latest snapshot
 		lastSnapshot := snapshots.Msg.Snapshots[len(snapshots.Msg.Snapshots)-1]
-		trustBuffer := 10 // number of blocks to step back
-		safeHeight := lastSnapshot.Height - int64(trustBuffer)
+		trustBuffer := int64(10) // number of blocks to step back
+		safeHeight := lastSnapshot.Height - trustBuffer
+
+		// Ensure safeHeight is at least 1 (block height starts at 1)
+		if safeHeight < 1 {
+			s.logger.Warn("snapshot height too low for trust buffer",
+				zap.String("rpcServer", rpcServer),
+				zap.Int64("snapshotHeight", lastSnapshot.Height),
+				zap.Int64("safeHeight", safeHeight))
+			safeHeight = 1
+		}
 
 		client, err := http.New(rpcServer)
 		if err != nil {
@@ -705,12 +770,20 @@ func (s *Server) stateSyncLatestBlock(rpcServers []string) (trustHeight int64, t
 
 		block, err := client.Block(context.Background(), &safeHeight)
 		if err != nil {
-			s.logger.Error("error getting latest block", zap.String("rpcServer", rpcServer), zap.Error(err))
+			s.logger.Error("error getting block at safe height",
+				zap.String("rpcServer", rpcServer),
+				zap.Int64("safeHeight", safeHeight),
+				zap.Error(err))
 			continue
 		}
 
 		trustHeight = block.Block.Height
 		trustHash = block.Block.Hash().String()
+
+		s.logger.Info("found usable block for state sync",
+			zap.String("rpcServer", rpcServer),
+			zap.Int64("trustHeight", trustHeight),
+			zap.String("trustHash", trustHash))
 
 		return trustHeight, trustHash, nil
 	}
