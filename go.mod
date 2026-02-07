@@ -54,6 +54,7 @@ require (
 	github.com/tus/tusd/v2 v2.8.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.38.0
+	modernc.org/sqlite v1.38.0
 )
 
 require (
@@ -182,6 +183,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/oasisprotocol/curve25519-voi v0.0.0-20220708102147-0a8a51822cae // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -199,6 +201,7 @@ require (
 	github.com/quic-go/quic-go v0.44.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/refraction-networking/utls v1.5.3 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
@@ -235,6 +238,9 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250303144028-a0af3efb3deb // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	modernc.org/libc v1.65.10 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
