@@ -120,8 +120,9 @@ func parseSelectedPreview(previewStart string) (sql.NullString, error) {
 // regular uploads and TUS uploads. It:
 // 1. Computes the CID
 // 2. Runs ffprobe
-// 3. Replicates to local bucket and peers
-// 4. Handles image templates immediately or queues audio for transcoding
+// 3. Replicates to local bucket
+// 4. Queues replication to other hosts (rendezvous or placement)
+// 5. Handles image templates immediately or queues audio for transcoding
 //
 // The upload record must already exist in the database (for TUS) or will be created (for regular uploads).
 // On error, upload.Error is set and the record is updated.
@@ -151,35 +152,37 @@ func (ss *MediorumServer) processUploadedFile(ctx context.Context, upload *Uploa
 	// Restore original filename in ffprobe result
 	upload.FFProbe.Format.Filename = upload.OrigFileName
 
-	// Replicate to my bucket + others
-	ss.replicateToMyBucket(ctx, formFileCID, tmpFile)
-	ss.logger.Info("replicating to my bucket", zap.String("name", filePath), zap.String("cid", formFileCID))
-
-	upload.Mirrors, err = ss.replicateFileParallel(ctx, formFileCID, filePath, upload.PlacementHosts)
+	// Replicate to my bucket
+	err = ss.replicateToMyBucket(ctx, formFileCID, tmpFile)
 	if err != nil {
 		return ss.handleUploadError(upload, err, shouldCreate)
 	}
+	ss.logger.Info("replicated to my bucket", zap.String("name", filePath), zap.String("cid", formFileCID))
 
-	ss.logger.Info("mirrored",
-		zap.String("name", upload.OrigFileName),
-		zap.String("uploadID", upload.ID),
-		zap.String("cid", formFileCID),
-		zap.Strings("mirrors", upload.Mirrors),
-	)
+	// Only add self to Mirrors if we're in the placement hosts (or rendezvous set if no placement hosts)
+	shouldAddSelf := false
+	if len(upload.PlacementHosts) > 0 {
+		shouldAddSelf = slices.Contains(upload.PlacementHosts, ss.Config.Self.Host)
+	} else {
+		_, shouldAddSelf = ss.rendezvousAllHosts(formFileCID)
+	}
 
-	// Handle image uploads immediately
+	if shouldAddSelf {
+		upload.Mirrors = []string{ss.Config.Self.Host}
+	} else {
+		// Ensure Mirrors is an empty slice rather than nil so it serializes as [] instead of null.
+		upload.Mirrors = []string{}
+	}
+
+	// For images, mark as done immediately (no transcoding needed)
 	if upload.Template == JobTemplateImgSquare || upload.Template == JobTemplateImgBackdrop {
 		upload.TranscodeResults["original.jpg"] = formFileCID
 		upload.TranscodeProgress = 1
 		upload.TranscodedAt = time.Now().UTC()
 		upload.Status = JobStatusDone
-		if shouldCreate {
-			return ss.crud.Create(upload)
-		}
-		return ss.crud.Update(upload)
 	}
 
-	// Save and queue for transcoding
+	// Save upload record
 	if shouldCreate {
 		if err := ss.crud.Create(upload); err != nil {
 			return err
@@ -190,7 +193,34 @@ func (ss *MediorumServer) processUploadedFile(ctx context.Context, upload *Uploa
 		}
 	}
 
-	ss.transcodeWork <- upload
+	ss.logger.Info("upload saved, queuing for async replication",
+		zap.String("name", upload.OrigFileName),
+		zap.String("uploadID", upload.ID),
+		zap.String("cid", formFileCID),
+		zap.String("template", string(upload.Template)),
+	)
+
+	// Queue for async replication (non-blocking)
+	select {
+	case ss.replicationWork <- upload:
+	default:
+		ss.logger.Warn("replication queue full, will be picked up by periodic job", zap.String("uploadID", upload.ID))
+	}
+
+	// Queue audio for transcoding (images don't need transcoding)
+	if upload.Template == JobTemplateAudio {
+		ss.logger.Info("upload queued for transcode",
+			zap.String("name", upload.OrigFileName),
+			zap.String("uploadID", upload.ID),
+			zap.String("cid", formFileCID),
+			zap.String("template", string(upload.Template)))
+		select {
+		case ss.transcodeWork <- upload:
+		default:
+			ss.logger.Warn("transcode queue full, will be picked up by periodic job", zap.String("uploadID", upload.ID))
+		}
+	}
+
 	return nil
 }
 
@@ -201,7 +231,9 @@ func (ss *MediorumServer) handleUploadError(upload *Upload, err error, shouldCre
 	if shouldCreate {
 		ss.crud.Create(upload)
 	} else {
-		ss.crud.Update(upload)
+		if updateErr := ss.crud.Update(upload); updateErr != nil {
+			ss.logger.Error("failed to update upload status", zap.String("id", upload.ID), zap.Error(updateErr))
+		}
 	}
 	return err
 }

@@ -89,6 +89,7 @@ type MediorumServer struct {
 	reqClient        *req.Client
 	rendezvousHasher *common.RendezvousHasher
 	transcodeWork    chan *Upload
+	replicationWork  chan *Upload
 	ethService       ethv1connect.EthServiceHandler
 
 	// stats
@@ -329,7 +330,8 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 		isSeeding:        config.Env == "stage" || config.Env == "prod",
 		isAudiusdManaged: isAudiusdManaged,
 		rendezvousHasher: rendezvousHasher,
-		transcodeWork:    make(chan *Upload),
+		transcodeWork:    make(chan *Upload, 100),
+		replicationWork:  make(chan *Upload, 100),
 		posChannel:       posChannel,
 
 		peerHealths:        map[string]*PeerHealth{},
@@ -498,6 +500,7 @@ func (ss *MediorumServer) MustStart() error {
 	ss.lc.AddManagedRoutine("echo server", ss.startEchoServer)
 	ss.lc.AddManagedRoutine("transcoder", ss.startTranscoder)
 	ss.lc.AddManagedRoutine("audio analyzer", ss.startAudioAnalyzer)
+	ss.lc.AddManagedRoutine("replication workers", ss.startReplicationWorkers)
 
 	if ss.Config.StoreAll {
 		ss.lc.AddManagedRoutine("fix truncated qm worker", ss.startFixTruncatedQmWorker)

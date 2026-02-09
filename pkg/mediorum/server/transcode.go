@@ -22,6 +22,7 @@ import (
 
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/cidutil"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 
 	"github.com/disintegration/imaging"
 	"github.com/spf13/cast"
@@ -102,13 +103,9 @@ func (ss *MediorumServer) startTranscoder(ctx context.Context) error {
 }
 
 func (ss *MediorumServer) findMissedJobs(work chan *Upload, myHost string) {
-	newStatus := JobStatusNew
-	busyStatus := JobStatusBusy
-	errorStatus := JobStatusError
-
 	uploads := []*Upload{}
 	// Only select uploads that have a CID set to avoid race condition with TUS uploads
-	ss.crud.DB.Where("template = 'audio' and status in ? and orig_file_cid != ''", []string{newStatus, busyStatus, errorStatus}).Find(&uploads)
+	ss.crud.DB.Where("template = 'audio' and status in ? and orig_file_cid != ''", []string{JobStatusNew, JobStatusError}).Find(&uploads)
 
 	for _, upload := range uploads {
 		if upload.ErrorCount > 5 {
@@ -131,7 +128,7 @@ func (ss *MediorumServer) startTranscodeWorker(ctx context.Context) error {
 			if !ok {
 				return nil // channel closed
 			}
-			ss.logger.Debug("transcoding", zap.String("upload", upload.ID))
+			ss.logger.Info("transcoding", zap.String("upload", upload.ID))
 			err := ss.transcode(ctx, upload)
 			if err != nil {
 				ss.logger.Warn("transcode failed", zap.Any("upload", upload), zap.Error(err))
@@ -228,9 +225,7 @@ func (ss *MediorumServer) transcodeAudio(_ context.Context, upload *Upload, _ st
 					percent := u / durationUs
 
 					if percent-upload.TranscodeProgress > 0.1 {
-						upload.TranscodeProgress = percent
-						upload.TranscodedAt = time.Now().UTC()
-						ss.crud.Patch(upload)
+						ss.crud.DB.Model(upload).Update("transcode_progress", percent)
 					}
 				}
 			}
@@ -289,17 +284,27 @@ func (ss *MediorumServer) transcodeFullAudio(ctx context.Context, upload *Upload
 		return onError(err, upload.Status, "computeFileCID")
 	}
 	resultKey := resultHash
-	upload.TranscodedMirrors, err = ss.replicateFileParallel(ctx, resultHash, destPath, upload.PlacementHosts)
-	if err != nil {
-		return onError(err, upload.Status, "replicateFile")
-	}
 
 	// transcode server will retain transcode result for analysis
 	ss.replicateToMyBucket(ctx, resultHash, dest)
 
 	upload.TranscodeResults["320"] = resultKey
 
-	logger.Info("audio transcode done", zap.Strings("mirrors", upload.TranscodedMirrors))
+	// Only add self to TranscodedMirrors if we're in the placement hosts (or rendezvous set if no placement hosts)
+	shouldAddSelf := false
+	if len(upload.PlacementHosts) > 0 {
+		shouldAddSelf = slices.Contains(upload.PlacementHosts, ss.Config.Self.Host)
+	} else {
+		_, shouldAddSelf = ss.rendezvousAllHosts(resultHash)
+	}
+
+	if shouldAddSelf {
+		upload.TranscodedMirrors = []string{ss.Config.Self.Host}
+	} else {
+		upload.TranscodedMirrors = []string{}
+	}
+
+	logger.Info("audio transcode done", zap.String("cid", resultHash))
 
 	// if a start time is set, also transcode an audio preview from the full 320kbps downsample
 	if upload.SelectedPreview.Valid {
@@ -335,9 +340,18 @@ outerLoop:
 }
 
 func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
-	upload.TranscodedBy = ss.Config.Self.Host
-	upload.TranscodedAt = time.Now().UTC()
-	upload.Status = JobStatusBusy
+	var dbUpload Upload
+	if err := ss.crud.DB.Where("id = ?", upload.ID).First(&dbUpload).Error; err != nil {
+		return fmt.Errorf("failed to get upload from DB: %w", err)
+	}
+	dbUpload.TranscodedBy = ss.Config.Self.Host
+	dbUpload.TranscodedAt = time.Now().UTC()
+	dbUpload.Status = JobStatusBusy
+	if err := ss.crud.Update(&dbUpload); err != nil {
+		ss.logger.Error("failed to update transcode status", zap.String("id", dbUpload.ID), zap.Error(err))
+		return err
+	}
+
 	fileHash := upload.OrigFileCID
 
 	logger := ss.logger.With(zap.Any("template", upload.Template), zap.String("cid", fileHash))
@@ -365,10 +379,16 @@ func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
 		filteredError := filterErrorLines(err.Error(), errorTypes, 10)
 		errMsg := fmt.Errorf("%s %s", filteredError, strings.Join(info, " "))
 
-		upload.Error = errMsg.Error()
-		upload.Status = JobStatusError
-		upload.ErrorCount = upload.ErrorCount + 1
-		ss.crud.Update(upload)
+		var dbUpload Upload
+		if err := ss.crud.DB.Where("id = ?", upload.ID).First(&dbUpload).Error; err != nil {
+			return fmt.Errorf("failed to get upload from DB: %w", err)
+		}
+		dbUpload.Error = errMsg.Error()
+		dbUpload.Status = JobStatusError
+		dbUpload.ErrorCount = dbUpload.ErrorCount + 1
+		if err := ss.crud.Update(&dbUpload); err != nil {
+			ss.logger.Error("failed to update transcode error status", zap.String("id", dbUpload.ID), zap.Error(err))
+		}
 		return errMsg
 	}
 
@@ -395,11 +415,28 @@ func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
 		return fmt.Errorf("unsupported format: %s", upload.Template)
 	}
 
-	upload.TranscodeProgress = 1
-	upload.TranscodedAt = time.Now().UTC()
-	upload.Status = JobStatusDone
-	upload.Error = ""
-	ss.crud.Update(upload)
+	// Get fresh upload from DB before updating to prevent stale data
+	if err := ss.crud.DB.Where("id = ?", upload.ID).First(&dbUpload).Error; err != nil {
+		return fmt.Errorf("failed to get upload from DB: %w", err)
+	}
+	dbUpload.TranscodeProgress = 1
+	dbUpload.TranscodedAt = time.Now().UTC()
+	dbUpload.Status = JobStatusDone
+	dbUpload.Error = ""
+	dbUpload.TranscodeResults = upload.TranscodeResults
+	dbUpload.TranscodedMirrors = upload.TranscodedMirrors
+	if err := ss.crud.Update(&dbUpload); err != nil {
+		ss.logger.Error("failed to update transcode completion status", zap.String("id", dbUpload.ID), zap.Error(err))
+		return err
+	}
+
+	// Queue for async replication of transcoded file
+	select {
+	case ss.replicationWork <- &dbUpload:
+		logger.Debug("queued transcoded file for replication", zap.String("uploadID", upload.ID))
+	default:
+		logger.Warn("replication channel full, transcoded file may not replicate immediately", zap.String("uploadID", upload.ID))
+	}
 
 	return nil
 }

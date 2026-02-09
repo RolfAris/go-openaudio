@@ -134,7 +134,9 @@ func (ss *MediorumServer) analyzeAudio(ctx context.Context, upload *Upload, dead
 		upload.AudioAnalysisStatus = JobStatusError
 		// failed analyses do not block uploads
 		upload.Status = JobStatusDone
-		ss.crud.Update(upload)
+		if updateErr := ss.crud.Update(upload); updateErr != nil {
+			ss.logger.Error("failed to update audio analysis error status", zap.String("id", upload.ID), zap.Error(updateErr))
+		}
 		return err
 	}
 
@@ -228,15 +230,22 @@ func (ss *MediorumServer) analyzeAudio(ctx context.Context, upload *Upload, dead
 	}
 
 	// all analyses complete
-	upload.AudioAnalysisResults = &AudioAnalysisResult{
-		BPM: bpm,
-		Key: musicalKey,
+	// Before updating, refresh from DB to get latest mirrors
+	var dbUpload Upload
+	if err := ss.crud.DB.Where("id = ?", upload.ID).First(&dbUpload).Error; err != nil {
+		return err
 	}
-	upload.AudioAnalysisError = ""
-	upload.AudioAnalyzedAt = time.Now().UTC()
-	upload.AudioAnalysisStatus = JobStatusDone
-	upload.Status = JobStatusDone
-	ss.crud.Update(upload)
+
+	// Update only the fields we modified
+	dbUpload.AudioAnalysisResults = &AudioAnalysisResult{BPM: bpm, Key: musicalKey}
+	dbUpload.AudioAnalysisError = ""
+	dbUpload.AudioAnalyzedAt = time.Now().UTC()
+	dbUpload.AudioAnalysisStatus = JobStatusDone
+	dbUpload.Status = JobStatusDone
+	if err := ss.crud.Update(&dbUpload); err != nil {
+		ss.logger.Error("failed to update audio analysis completion status", zap.String("id", dbUpload.ID), zap.Error(err))
+		return err
+	}
 
 	return nil
 }
