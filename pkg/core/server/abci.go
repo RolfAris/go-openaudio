@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -494,8 +495,13 @@ func (s *Server) FinalizeBlock(ctx context.Context, req *abcitypes.FinalizeBlock
 	}
 
 	validatorUpdates := make(abcitypes.ValidatorUpdates, 0, len(validatorUpdatesMap))
-	for _, vu := range validatorUpdatesMap {
-		validatorUpdates = append(validatorUpdates, vu)
+	keys := make([]string, 0, len(validatorUpdatesMap))
+	for k := range validatorUpdatesMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		validatorUpdates = append(validatorUpdates, validatorUpdatesMap[k])
 	}
 
 	resp := &abcitypes.FinalizeBlockResponse{
