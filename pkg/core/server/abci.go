@@ -996,7 +996,10 @@ func (s *Server) validateBlockTx(ctx context.Context, blockTime time.Time, block
 			return false, nil
 		}
 	case *v1.SignedTransaction_StorageProof:
-		if err := s.isValidStorageProofTx(ctx, signedTx, blockHeight, true); err != nil {
+		// Hotfix: use enforceReplicas=false during block validation to avoid rejecting valid blocks when
+		// our local storage_proof_peers diverges from the proposer's (e.g. new node registration, eth sync drift).
+		// TODO: Re-enable when replicaset derivation is deterministic across all nodes.
+		if err := s.isValidStorageProofTx(ctx, signedTx, blockHeight, false); err != nil {
 			s.logger.Error("Invalid block: invalid storage proof tx", zap.Error(err))
 			return false, nil
 		}
