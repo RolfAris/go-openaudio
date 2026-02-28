@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, mainnet-alpha-beta ]
+    branches: [ main, mainnet-alpha-beta, hotfix/storage-proof-replicas ]
   pull_request:
-    branches: [ main, mainnet-alpha-beta ]
+    branches: [ main, mainnet-alpha-beta, hotfix/storage-proof-replicas ]
 
 jobs:
   build-test-push:

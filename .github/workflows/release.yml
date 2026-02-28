@@ -10,6 +10,7 @@ on:
         options:
           - main
           - mainnet-alpha-beta
+          - hotfix/storage-proof-replicas
       version:
         description: 'Release version (e.g., v1.0.0, v2.0.0-beta.1)'
         required: true
@@ -71,7 +72,7 @@ jobs:
         id: prerelease
         run: |
           # main branch releases are prereleases
-          # mainnet-alpha-beta releases are stable
+          # mainnet-alpha-beta and hotfix branches are stable releases
           if [[ "${{ inputs.branch }}" == "main" ]]; then
             echo "is_prerelease=true" >> $GITHUB_OUTPUT
           else
@@ -89,6 +90,7 @@ jobs:
           generate_release_notes: true
 
   build-test-push:
+    needs: create-release
     uses: ./.github/workflows/docker-build.yml
     with:
       tag: ${{ inputs.version }}
