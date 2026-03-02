@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -424,28 +423,52 @@ func (s *MediorumServer) requireRegisteredSignature(next echo.HandlerFunc) echo.
 				"detail": err.Error(),
 			})
 		} else {
-			// check it was signed by a registered node / mediorum peer
-			isRegistered := slices.ContainsFunc(s.Config.Signers, func(peer registrar.Peer) bool {
-				return strings.EqualFold(peer.Wallet, sig.SignerWallet)
-			}) || slices.ContainsFunc(s.Config.Peers, func(peer registrar.Peer) bool {
-				return strings.EqualFold(peer.Wallet, sig.SignerWallet)
-			})
-
-			wallets := make([]string, len(s.Config.Signers)+len(s.Config.Peers))
-			for i, peer := range s.Config.Signers {
-				wallets[i] = peer.Wallet
-			}
-			for i, peer := range s.Config.Peers {
-				wallets[len(s.Config.Signers)+i] = peer.Wallet
+			var trackID string
+			var managementKeyCount int
+			if info, ok := s.trackAccessInfoCache.Get(cid); ok {
+				trackID = info.TrackID
+				managementKeyCount = info.ManagementKeyCount
+			} else {
+				s.crud.DB.Raw("SELECT track_id FROM sound_recordings WHERE cid = ?", cid).Scan(&trackID)
+				if trackID != "" {
+					s.crud.DB.Raw("SELECT COUNT(*) FROM management_keys WHERE track_id = ?", trackID).Scan(&managementKeyCount)
+				}
+				s.trackAccessInfoCache.Set(cid, trackAccessInfo{trackID, managementKeyCount}, imcache.WithExpiration(5*time.Minute))
 			}
 
-			if !isRegistered {
-				s.logger.Debug("sig no match", zap.String("signed by", sig.SignerWallet))
-				return c.JSON(401, map[string]string{
-					"error":         "signer not in list of registered nodes",
-					"detail":        "signed by: " + sig.SignerWallet,
-					"valid_signers": strings.Join(wallets, ","),
+			// If track has access_authorities (management_keys), ONLY those signers may authorize - not validator keys
+			if trackID != "" && managementKeyCount > 0 {
+				var count int
+				s.crud.DB.Raw("SELECT COUNT(*) FROM management_keys WHERE track_id = ? AND address = ?", trackID, sig.SignerWallet).Scan(&count)
+				if count == 0 {
+					s.logger.Debug("sig no match (access_authorities)", zap.String("signed by", sig.SignerWallet), zap.String("track_id", trackID))
+					return c.JSON(401, map[string]string{
+						"error":  "signer not authorized for this track (access_authorities)",
+						"detail": "signed by: " + sig.SignerWallet + "; signer must be in track access_authorities",
+					})
+				}
+			} else {
+				// No access_authorities: require validator/peer signature
+				isRegistered := slices.ContainsFunc(s.Config.Signers, func(peer registrar.Peer) bool {
+					return strings.EqualFold(peer.Wallet, sig.SignerWallet)
+				}) || slices.ContainsFunc(s.Config.Peers, func(peer registrar.Peer) bool {
+					return strings.EqualFold(peer.Wallet, sig.SignerWallet)
 				})
+				if !isRegistered {
+					wallets := make([]string, len(s.Config.Signers)+len(s.Config.Peers))
+					for i, peer := range s.Config.Signers {
+						wallets[i] = peer.Wallet
+					}
+					for i, peer := range s.Config.Peers {
+						wallets[len(s.Config.Signers)+i] = peer.Wallet
+					}
+					s.logger.Debug("sig no match", zap.String("signed by", sig.SignerWallet))
+					return c.JSON(401, map[string]string{
+						"error":         "signer not in list of registered nodes",
+						"detail":        "signed by: " + sig.SignerWallet,
+						"valid_signers": strings.Join(wallets, ","),
+					})
+				}
 			}
 
 			// check signature not too old
@@ -560,11 +583,11 @@ func (ss *MediorumServer) serveTrack(c echo.Context) error {
 		})
 	}
 
-	// check it is for this upload
-	if sig.Data.UploadID != trackId {
+	// check it is for this track
+	if fmt.Sprint(sig.Data.TrackId) != trackId {
 		return c.JSON(401, map[string]string{
 			"error":  "signature contains incorrect track ID",
-			"detail": fmt.Sprintf("url: %s, signature %s", trackId, sig.Data.UploadID),
+			"detail": fmt.Sprintf("url: %s, signature trackId %d", trackId, sig.Data.TrackId),
 		})
 	}
 
@@ -575,7 +598,7 @@ func (ss *MediorumServer) serveTrack(c echo.Context) error {
 	}
 
 	var count int
-	ss.crud.DB.Raw("SELECT COUNT(*) FROM management_keys WHERE track_id = ? AND pub_key = ?", trackId, base64.StdEncoding.EncodeToString(sig.SignerPubkey)).Scan(&count)
+	ss.crud.DB.Raw("SELECT COUNT(*) FROM management_keys WHERE track_id = ? AND address = ?", trackId, sig.SignerWallet).Scan(&count)
 	if count == 0 {
 		ss.logger.Debug("sig no match", zap.String("signed by", sig.SignerWallet))
 		return c.JSON(401, map[string]string{
