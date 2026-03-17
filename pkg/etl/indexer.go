@@ -69,6 +69,7 @@ func (e *Indexer) Run() error {
 	// Initialize entity manager dispatcher and register handlers
 	e.dispatcher = em.NewDispatcher(e.logger)
 	e.dispatcher.Register(em.UserCreate())
+	e.dispatcher.Register(em.UserUpdate())
 
 	// Initialize pubsub instances
 	e.blockPubsub = NewPubsub[*db.EtlBlock]()
