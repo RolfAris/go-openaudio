@@ -1,0 +1,155 @@
+name: genesis-replay
+
+# Minimal stack for genesis replay testing.
+# All paths are relative to the repo root.
+#
+# Usage (from repo root):
+#   docker compose -f cmd/genesis-replay/docker-compose.yml up -d
+#   go run ./cmd/genesis-replay/... --src postgres://... --dst https://node1.oap.devnet
+#   docker compose -f cmd/genesis-replay/docker-compose.yml down -v
+
+services:
+
+  eth-ganache:
+    image: audius/eth-ganache:latest
+    pull_policy: always
+    stop_grace_period: 0s
+    # Run ganache directly against the pre-built contract DB — no blockscout wait needed.
+    command: >
+      npx ganache
+        --server.host 0.0.0.0
+        --wallet.deterministic
+        --wallet.totalAccounts 50
+        --database.dbPath /usr/db
+        --chain.networkId 12345
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          node -e "require('http').request({port:8545,method:'POST',headers:{'Content-Type':'application/json'}},
+          r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>process.exit(JSON.parse(d).result?0:1))}).end(JSON.stringify({jsonrpc:'2.0',method:'eth_blockNumber',params:[],id:1}))"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  openaudio-1:
+    image: ${OPENAUDIO_IMAGE:-openaudio/go-openaudio:dev}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "curl -fsk https://localhost/health-check | grep -v 'core service not ready'"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    environment:
+      NETWORK: dev
+      OPENAUDIO_ENV: dev
+      OPENAUDIO_GENESIS: dev-v2
+      OPENAUDIO_TLS_SELF_SIGNED: "true"
+      OPENAUDIO_GENESIS_MIGRATION: "true"
+      nodeEndpoint: https://node1.oap.devnet
+      delegatePrivateKey: d09ba371c359f10f22ccda12fd26c598c7921bda3220c9942174562bc6a36fe8
+      archive: "true"
+      stateSyncServeSnapshots: "true"
+      stateSyncEnable: "false"
+      audius_core_root_dir: /data/core
+      uptimeDataDir: /data/bolt
+      OPENAUDIO_PGALL: "true"
+    extra_hosts:
+      - "node1.oap.devnet:host-gateway"
+    volumes:
+      - ${EXT_DATA_DIR}/test-validator:/data
+    ports:
+      - "50051:50051"
+    depends_on:
+      eth-ganache:
+        condition: service_healthy
+
+  ingress:
+    image: nginx:latest
+    volumes:
+      - ../../dev/nginx.conf:/etc/nginx/conf.d/vhost.conf:ro
+      - ../../dev/tls/cert.pem:/etc/nginx/ssl/cert.pem:ro
+      - ../../dev/tls/key.pem:/etc/nginx/ssl/key.pem:ro
+    extra_hosts:
+      - "node1.oap.devnet:host-gateway"
+    ports:
+      - "80:80"
+      - "443:443"
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: discovery_provider_1
+    volumes:
+      - ../../cmd/genesis-replay/testdata/dp_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ../../cmd/genesis-replay/testdata/dp_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      - ../../cmd/genesis-replay/testdata/source_init.sh:/docker-entrypoint-initdb.d/03_source_init.sh:ro
+      - ../../cmd/genesis-replay/testdata/seed.sql:/tmp/source_seed.sql:ro
+      - ${EXT_DATA_DIR}/test-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5434:5432"
+
+  redis:
+    image: redis:7.0
+    command: redis-server
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  discovery-provider:
+    image: audius-discovery-provider:latest
+    command: scripts/start.sh
+    environment:
+      # Database / cache
+      audius_db_url: postgresql://postgres:postgres@db:5432/discovery_provider_1
+      audius_db_url_read_replica: postgresql://postgres:postgres@db:5432/discovery_provider_1
+      audius_redis_url: redis://redis:6379/00
+
+      # ETH
+      audius_web3_eth_provider_url: http://eth-ganache:8545
+      audius_eth_contracts_registry: "0xABbfF712977dB51f9f212B85e8A4904c818C2b63"
+      audius_eth_contracts_token: "0xdcB2fC9469808630DD0744b0adf97C0003fC29B2"
+
+      # POA (entity manager / legacy contracts)
+      audius_web3_host: http://eth-ganache:8545
+      audius_contracts_registry: "0xCfEB869F69431e42cdB54A4F4f105C19C080A601"
+      audius_contracts_entity_manager_address: "0x254dffcd3277C0b1660F6d42EFbB754edaBAbC2B"
+
+      # Identity
+      audius_discprov_url: http://discovery-provider:5000
+      audius_delegate_owner_wallet: "0x73EB6d82CFB20bA669e9c178b718d770C49BB52f"
+      audius_delegate_private_key: d09ba371c359f10f22ccda12fd26c598c7921bda3220c9942174562bc6a36fe8
+
+      # Dev flags
+      audius_db_run_migrations: "false"
+      audius_discprov_dev_mode: "true"
+      AUDIUS_GENESIS_MIGRATION_MODE: "true"
+      audius_discprov_loglevel: info
+      audius_enable_rsyslog: "false"
+      PYTHONPYCACHEPREFIX: /tmp/pycache
+
+      # Stub Solana — point to ganache so the process starts without a live validator
+      audius_solana_endpoint: http://eth-ganache:8545
+    extra_hosts:
+      - "node1.oap.devnet:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      eth-ganache:
+        condition: service_healthy
+      openaudio-1:
+        condition: service_healthy
+
