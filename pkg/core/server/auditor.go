@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
@@ -109,8 +108,14 @@ func (s *Server) isValidRollup(ctx context.Context, timestamp time.Time, height 
 		return false, nil
 	} else if myRollup.BlockEnd != rollup.BlockEnd {
 		return false, nil
-	} else if !reflect.DeepEqual(myRollup.Reports, rollup.Reports) {
+	} else if len(myRollup.Reports) != len(rollup.Reports) {
 		return false, nil
+	} else {
+		for i, r := range myRollup.Reports {
+			if !proto.Equal(r, rollup.Reports[i]) {
+				return false, nil
+			}
+		}
 	}
 	return true, nil
 }
