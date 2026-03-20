@@ -143,7 +143,11 @@ func SetupNode(logger *zap.Logger) (*Config, *cconfig.Config, error) {
 	// don't recheck mempool transactions, rely on CheckTx and Propose step
 	cometConfig.Mempool.Recheck = false
 	cometConfig.Mempool.Broadcast = false
-	cometConfig.Consensus.TimeoutCommit = 400 * time.Millisecond
+	timeoutCommit := 400 * time.Millisecond
+	if envConfig.GenesisMigration {
+		timeoutCommit = 10 * time.Millisecond
+	}
+	cometConfig.Consensus.TimeoutCommit = timeoutCommit
 	cometConfig.Consensus.TimeoutPropose = 400 * time.Millisecond
 	cometConfig.Consensus.TimeoutProposeDelta = 75 * time.Millisecond
 	cometConfig.Consensus.TimeoutPrevote = 300 * time.Millisecond
