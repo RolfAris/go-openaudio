@@ -191,6 +191,16 @@ type CoreEtlTxValidatorRegistration struct {
 	CreatedAt    pgtype.Timestamptz
 }
 
+type CoreGenesisState struct {
+	ChainID            string
+	MigrationAddress   string
+	MigrationEndHeight pgtype.Int8
+	SnapshotTimestamp  pgtype.Timestamptz
+	EntityCounts       []byte
+	CompletedAt        pgtype.Timestamptz
+	CreatedAt          pgtype.Timestamptz
+}
+
 type CoreMead struct {
 	ID                int64
 	Address           string

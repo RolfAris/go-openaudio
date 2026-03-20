@@ -76,6 +76,13 @@ type Server struct {
 	remoteHeadMu        sync.Mutex
 
 	onManagementKeysChanged func(trackID string)
+
+	// Genesis migration authority — set from genesis app_state on InitChain.
+	// During block heights 1..genesisMigrationEndHeight this address may sign
+	// ManageEntity transactions on behalf of any entity (ownership check bypassed).
+	// Zero value means no migration authority is active.
+	genesisMigrationAddress   string
+	genesisMigrationEndHeight int64
 }
 
 func NewServer(lc *lifecycle.Lifecycle, config *config.Config, cconfig *cconfig.Config, logger *zap.Logger, pool *pgxpool.Pool, ethService *eth.EthService, posChannel chan pos.PoSRequest) (*Server, error) {

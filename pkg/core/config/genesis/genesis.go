@@ -19,8 +19,34 @@ var stageGenesis embed.FS
 //go:embed prod.json
 var prodGenesis embed.FS
 
+//go:embed prod-v2.json
+var prodV2Genesis embed.FS
+
+//go:embed dev-v2.json
+var devV2Genesis embed.FS
+
 func Read(environment string) (*types.GenesisDoc, error) {
 	switch environment {
+	case "dev-v2":
+		data, err := devV2Genesis.ReadFile("dev-v2.json")
+		if err != nil {
+			return nil, fmt.Errorf("failed to read embedded file: %v", err)
+		}
+		genDoc, err := types.GenesisDocFromJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal dev-v2.json into genesis: %v", err)
+		}
+		return genDoc, nil
+	case "prod-v2", "mainnet-v2":
+		data, err := prodV2Genesis.ReadFile("prod-v2.json")
+		if err != nil {
+			return nil, fmt.Errorf("failed to read embedded file: %v", err)
+		}
+		genDoc, err := types.GenesisDocFromJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal prod-v2.json into genesis: %v", err)
+		}
+		return genDoc, nil
 	case "prod", "production", "mainnet":
 		data, err := prodGenesis.ReadFile("prod.json")
 		if err != nil {

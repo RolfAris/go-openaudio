@@ -261,8 +261,59 @@ func (s *Server) CheckTx(_ context.Context, check *abcitypes.CheckTxRequest) (*a
 	return &abcitypes.CheckTxResponse{Code: 1}, nil
 }
 
-func (s *Server) InitChain(_ context.Context, chain *abcitypes.InitChainRequest) (*abcitypes.InitChainResponse, error) {
+// genesisMigrationAppState is the JSON structure embedded in the genesis app_state field.
+type genesisMigrationAppState struct {
+	GenesisMigrationAddress   string `json:"genesis_migration_address"`
+	GenesisMigrationEndHeight int64  `json:"genesis_migration_end_height"`
+}
+
+func (s *Server) InitChain(ctx context.Context, chain *abcitypes.InitChainRequest) (*abcitypes.InitChainResponse, error) {
+	if len(chain.AppStateBytes) == 0 {
+		return &abcitypes.InitChainResponse{}, nil
+	}
+
+	var appState genesisMigrationAppState
+	if err := json.Unmarshal(chain.AppStateBytes, &appState); err != nil {
+		return nil, fmt.Errorf("InitChain: parse app_state: %w", err)
+	}
+
+	if appState.GenesisMigrationAddress != "" && appState.GenesisMigrationAddress != "0x0000000000000000000000000000000000000000" {
+		s.genesisMigrationAddress = strings.ToLower(appState.GenesisMigrationAddress)
+		s.genesisMigrationEndHeight = appState.GenesisMigrationEndHeight
+		s.logger.Info("genesis migration authority set",
+			zap.String("address", s.genesisMigrationAddress),
+			zap.Int64("end_height", s.genesisMigrationEndHeight),
+		)
+
+		_, err := s.pool.Exec(ctx,
+			`INSERT INTO core_genesis_state (chain_id, migration_address, migration_end_height, entity_counts)
+			 VALUES ($1, $2, $3, '{}')
+			 ON CONFLICT (chain_id) DO UPDATE
+			   SET migration_address = EXCLUDED.migration_address,
+			       migration_end_height = EXCLUDED.migration_end_height`,
+			chain.ChainId,
+			s.genesisMigrationAddress,
+			s.genesisMigrationEndHeight,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("InitChain: upsert core_genesis_state: %w", err)
+		}
+	}
+
 	return &abcitypes.InitChainResponse{}, nil
+}
+
+// IsMigrationAuthority returns true if the given address is the active genesis migration
+// authority at the given block height. Used by the connect RPC layer to expose migration
+// state to the discovery provider.
+func (s *Server) IsMigrationAuthority(address string, blockHeight int64) bool {
+	if s.genesisMigrationAddress == "" {
+		return false
+	}
+	if s.genesisMigrationEndHeight > 0 && blockHeight > s.genesisMigrationEndHeight {
+		return false
+	}
+	return strings.ToLower(address) == s.genesisMigrationAddress
 }
 
 func (s *Server) PrepareProposal(ctx context.Context, proposal *abcitypes.PrepareProposalRequest) (*abcitypes.PrepareProposalResponse, error) {

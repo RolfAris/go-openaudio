@@ -45,8 +45,11 @@ func SetupNode(logger *zap.Logger) (*Config, *cconfig.Config, error) {
 		return nil, nil, fmt.Errorf("reading env config: %v", err)
 	}
 
-	// gather genesis doc based on environment
-	genDoc, err := genesis.Read(envConfig.Environment)
+	// gather genesis doc: OPENAUDIO_GENESIS overrides OPENAUDIO_ENV for genesis selection,
+	// allowing e.g. OPENAUDIO_ENV=dev + OPENAUDIO_GENESIS=prod-v2 to run dev infrastructure
+	// against the prod-v2 chain.
+	genesisNetwork := GetEnvWithDefault("OPENAUDIO_GENESIS", envConfig.Environment)
+	genDoc, err := genesis.Read(genesisNetwork)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading genesis: %v", err)
 	}

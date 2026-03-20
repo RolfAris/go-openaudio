@@ -1,0 +1,46 @@
+{
+  "genesis_time": "2026-01-01T00:00:00.0000Z",
+  "chain_id": "audius-mainnet-v2",
+  "initial_height": "0",
+  "consensus_params": {
+    "block": {
+      "max_bytes": "104857600",
+      "max_gas": "10000000"
+    },
+    "evidence": {
+      "max_age_num_blocks": "100000",
+      "max_age_duration": "172800000000000",
+      "max_bytes": "10485760"
+    },
+    "validator": {
+      "pub_key_types": ["ed25519"]
+    },
+    "version": {
+      "app": "0"
+    },
+    "synchrony": {
+      "precision": "100000000",
+      "message_delay": "500000000"
+    },
+    "feature": {
+      "vote_extensions_enable_height": "0",
+      "pbts_enable_height": "0"
+    }
+  },
+  "validators": [
+    {
+      "address": "FFAD25668E060A357BBE534C8B7E5B4E1274368B",
+      "pub_key": {
+        "type": "tendermint/PubKeyEd25519",
+        "value": "6wdF9AgylXFnTfTdlEp98dzlgPNIooHOmfUT4qaWpmM="
+      },
+      "power": "100",
+      "name": "bootstrap-validator"
+    }
+  ],
+  "app_state": {
+    "genesis_migration_address": "0xF7Bd9D733fAD4e2f0594bb88180cef8D8D03dEbB",
+    "genesis_migration_end_height": 0
+  },
+  "app_hash": ""
+}
