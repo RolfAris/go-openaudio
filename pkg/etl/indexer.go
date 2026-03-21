@@ -71,6 +71,9 @@ func (e *Indexer) Run() error {
 	e.dispatcher.Register(em.UserCreate())
 	e.dispatcher.Register(em.UserUpdate())
 	e.dispatcher.Register(em.UserVerify())
+	e.dispatcher.Register(em.TrackCreate())
+	e.dispatcher.Register(em.TrackUpdate())
+	e.dispatcher.Register(em.TrackDelete())
 
 	// Initialize pubsub instances
 	e.blockPubsub = NewPubsub[*db.EtlBlock]()
