@@ -155,32 +155,6 @@ func (m *Mediorum) UploadFile(ctx context.Context, file io.Reader, filename stri
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	// Start FileUpload polling if enabled and we have a core client
-	var fileUploadDone chan error
-	if opts != nil && opts.WaitForFileUpload && m.coreClient != nil && opts.OriginalCID != "" {
-		fileUploadDone = make(chan error, 1)
-		go func() {
-			for i := 0; i < 30; i++ { // Poll for up to 30 seconds
-				select {
-				case <-ctx.Done():
-					fileUploadDone <- ctx.Err()
-					return
-				default:
-				}
-
-				uploadResp, err := m.coreClient.GetUploadByCID(ctx, connect.NewRequest(&corev1.GetUploadByCIDRequest{
-					Cid: opts.OriginalCID,
-				}))
-				if err == nil && uploadResp.Msg.Exists {
-					fileUploadDone <- nil
-					return
-				}
-				time.Sleep(1 * time.Second)
-			}
-			fileUploadDone <- fmt.Errorf("FileUpload transaction not found after 30 seconds")
-		}()
-	}
-
 	// If WaitForTranscode is true and template is audio, poll until transcoding is complete
 	if opts != nil && opts.WaitForTranscode && opts.Template == "audio" {
 		for i, upload := range uploads {
@@ -210,10 +184,27 @@ func (m *Mediorum) UploadFile(ctx context.Context, file io.Reader, filename stri
 		}
 	}
 
-	// Wait for FileUpload transaction if polling was started
-	if fileUploadDone != nil {
-		if err := <-fileUploadDone; err != nil {
-			return nil, fmt.Errorf("FileUpload transaction polling failed: %w", err)
+	// Poll for FileUpload transaction after transcoding completes.
+	// The server only sends the FileUpload transaction to the blockchain after
+	// transcoding is done, so polling must happen after transcode polling above.
+	if opts != nil && opts.WaitForFileUpload && m.coreClient != nil && opts.OriginalCID != "" {
+		for i := 0; i < 30; i++ {
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("FileUpload transaction polling failed: %w", ctx.Err())
+			default:
+			}
+
+			uploadResp, err := m.coreClient.GetUploadByCID(ctx, connect.NewRequest(&corev1.GetUploadByCIDRequest{
+				Cid: opts.OriginalCID,
+			}))
+			if err == nil && uploadResp.Msg.Exists {
+				break
+			}
+			if i == 29 {
+				return nil, fmt.Errorf("FileUpload transaction polling failed: FileUpload transaction not found after 30 seconds")
+			}
+			time.Sleep(1 * time.Second)
 		}
 	}
 
