@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -310,8 +311,10 @@ func (ss *MediorumServer) postUpload(c echo.Context) error {
 	}
 
 	for _, upload := range uploads {
-		// Send FileUpload transaction after transcoding completes
+		// Send FileUpload transaction after transcoding completes.
+		// Use a detached context because this goroutine outlives the HTTP request.
 		go func(c echo.Context, upload *Upload) {
+			ctx := context.Background()
 			// Skip FileUpload transaction if programmable distribution is disabled
 			if !ss.Config.ProgrammableDistributionEnabled {
 				return
