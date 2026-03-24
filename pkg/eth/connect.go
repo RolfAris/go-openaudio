@@ -19,6 +19,15 @@ import (
 
 var _ v1connect.EthServiceHandler = (*EthService)(nil)
 
+var errNotReady = connect.NewError(connect.CodeUnavailable, errors.New("eth service is not ready"))
+
+func (e *EthService) requireDB() error {
+	if e.db == nil {
+		return errNotReady
+	}
+	return nil
+}
+
 func (e *EthService) GetStatus(context.Context, *connect.Request[v1.GetStatusRequest]) (*connect.Response[v1.GetStatusResponse], error) {
 	res := &v1.GetStatusResponse{}
 	if e.isReady.Load() {
@@ -28,6 +37,9 @@ func (e *EthService) GetStatus(context.Context, *connect.Request[v1.GetStatusReq
 }
 
 func (e *EthService) GetRegisteredEndpoints(ctx context.Context, _ *connect.Request[v1.GetRegisteredEndpointsRequest]) (*connect.Response[v1.GetRegisteredEndpointsResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	eps, err := e.db.GetRegisteredEndpoints(ctx)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		e.logger.Debug("could not get registered endpoints", zap.Error(err))
@@ -50,6 +62,9 @@ func (e *EthService) GetRegisteredEndpoints(ctx context.Context, _ *connect.Requ
 }
 
 func (e *EthService) GetRegisteredEndpointsForServiceProvider(ctx context.Context, req *connect.Request[v1.GetRegisteredEndpointsForServiceProviderRequest]) (*connect.Response[v1.GetRegisteredEndpointsForServiceProviderResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	eps, err := e.db.GetRegisteredEndpointsForServiceProvider(ctx, req.Msg.Owner)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		e.logger.Debug("could not get registered endpoints for service provider", zap.String("service_provider", req.Msg.Owner), zap.Error(err))
@@ -72,6 +87,9 @@ func (e *EthService) GetRegisteredEndpointsForServiceProvider(ctx context.Contex
 }
 
 func (e *EthService) GetRegisteredEndpointInfo(ctx context.Context, req *connect.Request[v1.GetRegisteredEndpointInfoRequest]) (*connect.Response[v1.GetRegisteredEndpointInfoResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	ep, err := e.db.GetRegisteredEndpoint(ctx, req.Msg.Endpoint)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		e.logger.Debug("could not get registered endpoint", zap.Error(err))
@@ -95,6 +113,9 @@ func (e *EthService) GetRegisteredEndpointInfo(ctx context.Context, req *connect
 }
 
 func (e *EthService) GetServiceProvider(ctx context.Context, req *connect.Request[v1.GetServiceProviderRequest]) (*connect.Response[v1.GetServiceProviderResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	serviceProvider, err := e.db.GetServiceProvider(ctx, req.Msg.Address)
 	if err != nil {
 		e.logger.Debug("could not get service provider", zap.Error(err))
@@ -116,6 +137,9 @@ func (e *EthService) GetServiceProvider(ctx context.Context, req *connect.Reques
 }
 
 func (e *EthService) GetServiceProviders(ctx context.Context, _ *connect.Request[v1.GetServiceProvidersRequest]) (*connect.Response[v1.GetServiceProvidersResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	sps, err := e.db.GetServiceProviders(ctx)
 	if err != nil {
 		e.logger.Debug("could not get service providers", zap.Error(err))
@@ -140,6 +164,9 @@ func (e *EthService) GetServiceProviders(ctx context.Context, _ *connect.Request
 }
 
 func (e *EthService) GetLatestFundingRound(ctx context.Context, _ *connect.Request[v1.GetLatestFundingRoundRequest]) (*connect.Response[v1.GetLatestFundingRoundResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	round, err := e.db.GetLatestFundingRound(ctx)
 	if err != nil {
 		e.logger.Debug("could not get latest funding round", zap.Error(err))
@@ -154,6 +181,9 @@ func (e *EthService) GetLatestFundingRound(ctx context.Context, _ *connect.Reque
 }
 
 func (e *EthService) IsDuplicateDelegateWallet(ctx context.Context, req *connect.Request[v1.IsDuplicateDelegateWalletRequest]) (*connect.Response[v1.IsDuplicateDelegateWalletResponse], error) {
+	if err := e.requireDB(); err != nil {
+		return nil, err
+	}
 	count, err := e.db.GetCountOfEndpointsWithDelegateWallet(ctx, req.Msg.Wallet)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		e.logger.Debug("could not check for duplicate wallet", zap.Error(err))

@@ -183,6 +183,13 @@ func (s *Server) startABCI(ctx context.Context) error {
 		}
 	}
 
+	// Remove stale validators from CometBFT state that were deregistered in the
+	// application DB but whose Power=0 update was never delivered to CometBFT.
+	if err := s.removeStaleValidatorsFromCometState(cometConfig); err != nil {
+		s.logger.Error("failed to remove stale validators from comet state", zap.Error(err))
+		// Non-fatal: continue with startup even if this fails
+	}
+
 	node, err := nm.NewNode(
 		ctx,
 		cometConfig,
