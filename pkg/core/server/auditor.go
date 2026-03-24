@@ -92,9 +92,16 @@ func (s *Server) createRollup(ctx context.Context, timestamp time.Time, height i
 func (s *Server) isValidRollup(ctx context.Context, timestamp time.Time, height int64, rollup *v1.SlaRollup) (bool, error) {
 	// +1 for backwards compatibility with off-by-one legacy error, delete on next chain rollover
 	if !s.shouldProposeNewRollup(ctx, height+1) {
+		s.logger.Error("Rejecting rollup: not at rollup interval",
+			zap.Int64("height", height),
+		)
 		return false, nil
 	}
 	if rollup.BlockStart > rollup.BlockEnd {
+		s.logger.Error("Rejecting rollup: block_start > block_end",
+			zap.Int64("proposed_start", rollup.BlockStart),
+			zap.Int64("proposed_end", rollup.BlockEnd),
+		)
 		return false, nil
 	}
 
@@ -104,12 +111,49 @@ func (s *Server) isValidRollup(ctx context.Context, timestamp time.Time, height 
 	}
 
 	if myRollup.Timestamp.GetSeconds() != rollup.Timestamp.GetSeconds() || myRollup.Timestamp.GetNanos() != rollup.Timestamp.GetNanos() {
+		s.logger.Error("Rejecting rollup: timestamp mismatch",
+			zap.Int64("height", height),
+			zap.Int64("proposed_ts_secs", rollup.Timestamp.GetSeconds()),
+			zap.Int64("my_ts_secs", myRollup.Timestamp.GetSeconds()),
+			zap.Int32("proposed_ts_nanos", rollup.Timestamp.GetNanos()),
+			zap.Int32("my_ts_nanos", myRollup.Timestamp.GetNanos()),
+		)
 		return false, nil
 	} else if myRollup.BlockStart != rollup.BlockStart {
+		s.logger.Error("Rejecting rollup: block_start mismatch",
+			zap.Int64("height", height),
+			zap.Int64("proposed_start", rollup.BlockStart),
+			zap.Int64("my_start", myRollup.BlockStart),
+		)
 		return false, nil
 	} else if myRollup.BlockEnd != rollup.BlockEnd {
+		s.logger.Error("Rejecting rollup: block_end mismatch",
+			zap.Int64("height", height),
+			zap.Int64("proposed_end", rollup.BlockEnd),
+			zap.Int64("my_end", myRollup.BlockEnd),
+		)
 		return false, nil
 	} else if !reflect.DeepEqual(myRollup.Reports, rollup.Reports) {
+		s.logger.Error("Rejecting rollup: reports mismatch",
+			zap.Int64("height", height),
+			zap.Int64("block_start", rollup.BlockStart),
+			zap.Int64("block_end", rollup.BlockEnd),
+			zap.Int("proposed_report_count", len(rollup.Reports)),
+			zap.Int("my_report_count", len(myRollup.Reports)),
+		)
+		// log the first diverging report to pinpoint the issue
+		for i := 0; i < len(myRollup.Reports) && i < len(rollup.Reports); i++ {
+			if !proto.Equal(myRollup.Reports[i], rollup.Reports[i]) {
+				s.logger.Error("Rejecting rollup: first diverging report",
+					zap.Int("index", i),
+					zap.String("proposed_address", rollup.Reports[i].Address),
+					zap.Int32("proposed_blocks", rollup.Reports[i].NumBlocksProposed),
+					zap.String("my_address", myRollup.Reports[i].Address),
+					zap.Int32("my_blocks", myRollup.Reports[i].NumBlocksProposed),
+				)
+				break
+			}
+		}
 		return false, nil
 	}
 	return true, nil
