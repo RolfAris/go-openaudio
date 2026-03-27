@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -46,7 +47,16 @@ type Console struct {
 	latestTrustedBlock atomic.Int64
 	lastRefreshTime    atomic.Int64  // Unix timestamp of last refresh
 	refreshInterval    time.Duration // How often to refresh
-	dashboardCache     *Cache[*pages.DashboardProps]
+	dashboardCache          *Cache[*pages.DashboardProps]
+	validatorLocationsCache *Cache[[]ValidatorLocation]
+}
+
+// ValidatorLocation represents a validator node's geographic position
+type ValidatorLocation struct {
+	Address  string  `json:"address"`
+	Endpoint string  `json:"endpoint"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
 }
 
 func NewConsole(etl *etlserver.ETLService, e *echo.Echo, env string) *Console {
@@ -81,6 +91,9 @@ func NewConsole(etl *etlserver.ETLService, e *echo.Echo, env string) *Console {
 func (con *Console) Initialize() {
 	// Initialize dashboard cache with 5 second refresh rate
 	con.dashboardCache = NewCache(con.buildDashboardProps, 5*time.Second, con.logger.With(zap.String("service", "dashboard-cache")))
+
+	// Initialize validator locations cache with 30 second refresh rate
+	con.validatorLocationsCache = NewCache(con.buildValidatorLocations, 30*time.Second, con.logger.With(zap.String("service", "validator-locations-cache")))
 
 	// Start background refreshers (but not the dashboard cache yet - that needs ETL to be ready)
 	go con.refreshTrustedBlock()
@@ -149,6 +162,10 @@ func (con *Console) Initialize() {
 
 	e.GET("/search", con.Search)
 
+	// API endpoints
+	e.GET("/api/validator-locations", con.ValidatorLocations)
+	e.POST("/api/debug/play", con.DebugPlay)
+
 	// SSE endpoints
 	e.GET("/sse/events", con.LiveEventsSSE)
 
@@ -200,6 +217,7 @@ func (con *Console) Run() error {
 		// Wait a moment for ETL to initialize
 		time.Sleep(2 * time.Second)
 		con.dashboardCache.StartRefresh(ctx)
+		con.validatorLocationsCache.StartRefresh(ctx)
 		return nil
 	})
 
@@ -1547,14 +1565,6 @@ func (con *Console) LiveEventsSSE(c echo.Context) error {
 		con.etl.GetPlayPubsub().Unsubscribe(etl.PlayTopic, playCh)
 	}()
 
-	// Throttle state for block events
-	var (
-		latestBlock    *db.EtlBlock
-		lastSentHeight int64
-		blockTicker    = time.NewTicker(1 * time.Second)
-	)
-	defer blockTicker.Stop()
-
 	flusher.Flush()
 
 	timeout := time.After(sseConnectionTTL)
@@ -1569,23 +1579,17 @@ func (con *Console) LiveEventsSSE(c echo.Context) error {
 
 		case blockEvent := <-blockCh:
 			if blockEvent != nil {
-				latestBlock = blockEvent
-			}
-
-		case <-blockTicker.C:
-			if latestBlock != nil && latestBlock.BlockHeight > lastSentHeight {
-				// Send block event
-				blockEvent := SSEEvent{
+				// Send every block event immediately
+				event := SSEEvent{
 					Event: "block",
 					Data: map[string]interface{}{
-						"height":   latestBlock.BlockHeight,
-						"proposer": latestBlock.ProposerAddress,
-						"time":     latestBlock.BlockTime.Time.Format(time.RFC3339),
+						"height":   blockEvent.BlockHeight,
+						"proposer": blockEvent.ProposerAddress,
+						"time":     blockEvent.BlockTime.Time.Format(time.RFC3339),
 					},
 				}
-				eventData, _ := json.Marshal(blockEvent)
+				eventData, _ := json.Marshal(event)
 				fmt.Fprintf(c.Response(), "data: %s\n\n", string(eventData))
-				lastSentHeight = latestBlock.BlockHeight
 				flusher.Flush()
 			}
 
@@ -1596,12 +1600,15 @@ func (con *Console) LiveEventsSSE(c echo.Context) error {
 					if latLong, err := con.etl.GetLocationDB().GetLatLong(c.Request().Context(), play.City, play.Region, play.Country); err == nil {
 						lat := latLong.Latitude
 						lng := latLong.Longitude
-						// Send play event with coordinates
+						// Send play event with coordinates and location info
 						playEvent := SSEEvent{
 							Event: "play",
 							Data: map[string]interface{}{
 								"lat":       lat,
 								"lng":       lng,
+								"city":      play.City,
+								"region":    play.Region,
+								"country":   play.Country,
 								"timestamp": time.Now().Format(time.RFC3339),
 								"duration":  5, // Default 5 seconds for animation
 							},
@@ -1731,4 +1738,119 @@ func (con *Console) refreshTrustedBlock() {
 			con.lastRefreshTime.Store(time.Now().Unix())
 		}
 	}
+}
+
+// ValidatorLocations returns cached validator geographic positions
+func (con *Console) ValidatorLocations(c echo.Context) error {
+	locations := con.validatorLocationsCache.Get()
+	if locations == nil {
+		return c.JSON(http.StatusOK, []ValidatorLocation{})
+	}
+	return c.JSON(http.StatusOK, locations)
+}
+
+// buildValidatorLocations fetches lat/lng from each validator's /version endpoint
+func (con *Console) buildValidatorLocations(ctx context.Context) ([]ValidatorLocation, error) {
+	if con.etl == nil {
+		con.logger.Warn("ETL service not available for validator locations")
+		return nil, fmt.Errorf("etl service not available")
+	}
+	etlDB := con.etl.GetDB()
+	if etlDB == nil {
+		con.logger.Warn("ETL DB not available for validator locations")
+		return nil, fmt.Errorf("etl db not available")
+	}
+	validators, err := etlDB.GetActiveValidators(ctx, db.GetActiveValidatorsParams{
+		Limit:  100,
+		Offset: 0,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active validators: %w", err)
+	}
+	con.logger.Info("Found active validators for location fetch", zap.Int("count", len(validators)))
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	var locations []ValidatorLocation
+
+	for _, v := range validators {
+		endpoint := v.Endpoint
+		if endpoint == "" {
+			continue
+		}
+		if !strings.HasPrefix(endpoint, "http") {
+			endpoint = "https://" + endpoint
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", endpoint+"/version", nil)
+		if err != nil {
+			con.logger.Warn("Failed to create version request", zap.String("endpoint", endpoint), zap.Error(err))
+			continue
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			con.logger.Warn("Failed to fetch version", zap.String("endpoint", endpoint), zap.Error(err))
+			continue
+		}
+
+		var versionResp struct {
+			Data struct {
+				Latitude  float64 `json:"latitude"`
+				Longitude float64 `json:"longitude"`
+			} `json:"data"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&versionResp)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		if versionResp.Data.Latitude != 0 || versionResp.Data.Longitude != 0 {
+			locations = append(locations, ValidatorLocation{
+				Address:  v.CometAddress,
+				Endpoint: v.Endpoint,
+				Lat:      versionResp.Data.Latitude,
+				Lng:      versionResp.Data.Longitude,
+			})
+		}
+	}
+
+	con.logger.Info("Fetched validator locations", zap.Int("count", len(locations)))
+	return locations, nil
+}
+
+// DebugPlay injects a fake play event into the ETL pubsub for testing.
+// Usage: curl -X POST 'https://node1.oap.devnet/api/debug/play?city=Tokyo&region=Kanto&country=Japan'
+func (con *Console) DebugPlay(c echo.Context) error {
+	city := c.QueryParam("city")
+	region := c.QueryParam("region")
+	country := c.QueryParam("country")
+	if city == "" {
+		city = "San Francisco"
+	}
+	if region == "" {
+		region = "California"
+	}
+	if country == "" {
+		country = "United States"
+	}
+
+	play := &db.EtlPlay{
+		City:    city,
+		Region:  region,
+		Country: country,
+	}
+
+	con.etl.GetPlayPubsub().Publish(c.Request().Context(), etl.PlayTopic, play)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"ok":      true,
+		"city":    city,
+		"region":  region,
+		"country": country,
+	})
 }
