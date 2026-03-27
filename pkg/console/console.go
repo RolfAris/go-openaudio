@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -93,7 +94,7 @@ func (con *Console) Initialize() {
 	con.dashboardCache = NewCache(con.buildDashboardProps, 5*time.Second, con.logger.With(zap.String("service", "dashboard-cache")))
 
 	// Initialize validator locations cache with 30 second refresh rate
-	con.validatorLocationsCache = NewCache(con.buildValidatorLocations, 30*time.Second, con.logger.With(zap.String("service", "validator-locations-cache")))
+	con.validatorLocationsCache = NewCache(con.buildValidatorLocations, 5*time.Minute, con.logger.With(zap.String("service", "validator-locations-cache")))
 
 	// Start background refreshers (but not the dashboard cache yet - that needs ETL to be ready)
 	go con.refreshTrustedBlock()
@@ -1749,35 +1750,35 @@ func (con *Console) ValidatorLocations(c echo.Context) error {
 	return c.JSON(http.StatusOK, locations)
 }
 
-// buildValidatorLocations fetches lat/lng from each validator's /version endpoint
+// buildValidatorLocations fetches lat/lng from each active ETL validator's /version endpoint.
 func (con *Console) buildValidatorLocations(ctx context.Context) ([]ValidatorLocation, error) {
-	if con.etl == nil {
-		con.logger.Warn("ETL service not available for validator locations")
+	if con.etl == nil || con.etl.GetDB() == nil {
 		return nil, fmt.Errorf("etl service not available")
 	}
-	etlDB := con.etl.GetDB()
-	if etlDB == nil {
-		con.logger.Warn("ETL DB not available for validator locations")
-		return nil, fmt.Errorf("etl db not available")
-	}
-	validators, err := etlDB.GetActiveValidators(ctx, db.GetActiveValidatorsParams{
-		Limit:  100,
+	validators, err := con.etl.GetDB().GetActiveValidators(ctx, db.GetActiveValidatorsParams{
+		Limit:  200,
 		Offset: 0,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active validators: %w", err)
 	}
-	con.logger.Info("Found active validators for location fetch", zap.Int("count", len(validators)))
+	con.logger.Info("Fetching validator locations", zap.Int("count", len(validators)))
 
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 3 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
-	var locations []ValidatorLocation
 
-	for _, v := range validators {
+	type locResult struct {
+		location ValidatorLocation
+		ok       bool
+	}
+	results := make([]locResult, len(validators))
+	var wg sync.WaitGroup
+
+	for i, v := range validators {
 		endpoint := v.Endpoint
 		if endpoint == "" {
 			continue
@@ -1785,42 +1786,50 @@ func (con *Console) buildValidatorLocations(ctx context.Context) ([]ValidatorLoc
 		if !strings.HasPrefix(endpoint, "http") {
 			endpoint = "https://" + endpoint
 		}
+		wg.Add(1)
+		go func(idx int, ep string, validator db.EtlValidator) {
+			defer wg.Done()
+			req, err := http.NewRequestWithContext(ctx, "GET", ep+"/version", nil)
+			if err != nil {
+				return
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				return
+			}
+			var versionResp struct {
+				Data struct {
+					Latitude  float64 `json:"latitude"`
+					Longitude float64 `json:"longitude"`
+				} `json:"data"`
+			}
+			err = json.NewDecoder(resp.Body).Decode(&versionResp)
+			resp.Body.Close()
+			if err != nil {
+				return
+			}
+			if versionResp.Data.Latitude != 0 || versionResp.Data.Longitude != 0 {
+				results[idx] = locResult{
+					location: ValidatorLocation{
+						Address:  validator.CometAddress,
+						Endpoint: validator.Endpoint,
+						Lat:      versionResp.Data.Latitude,
+						Lng:      versionResp.Data.Longitude,
+					},
+					ok: true,
+				}
+			}
+		}(i, endpoint, v)
+	}
+	wg.Wait()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint+"/version", nil)
-		if err != nil {
-			con.logger.Warn("Failed to create version request", zap.String("endpoint", endpoint), zap.Error(err))
-			continue
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			con.logger.Warn("Failed to fetch version", zap.String("endpoint", endpoint), zap.Error(err))
-			continue
-		}
-
-		var versionResp struct {
-			Data struct {
-				Latitude  float64 `json:"latitude"`
-				Longitude float64 `json:"longitude"`
-			} `json:"data"`
-		}
-		err = json.NewDecoder(resp.Body).Decode(&versionResp)
-		resp.Body.Close()
-		if err != nil {
-			continue
-		}
-
-		if versionResp.Data.Latitude != 0 || versionResp.Data.Longitude != 0 {
-			locations = append(locations, ValidatorLocation{
-				Address:  v.CometAddress,
-				Endpoint: v.Endpoint,
-				Lat:      versionResp.Data.Latitude,
-				Lng:      versionResp.Data.Longitude,
-			})
+	var locations []ValidatorLocation
+	for _, r := range results {
+		if r.ok {
+			locations = append(locations, r.location)
 		}
 	}
-
-	con.logger.Info("Fetched validator locations", zap.Int("count", len(locations)))
+	con.logger.Info("Fetched validator locations", zap.Int("with_location", len(locations)), zap.Int("total", len(validators)))
 	return locations, nil
 }
 
