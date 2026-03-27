@@ -68,7 +68,15 @@ func (e *Indexer) Run() error {
 
 	// Initialize entity manager dispatcher and register handlers
 	e.dispatcher = em.NewDispatcher(e.logger)
-	e.dispatcher.Register(em.UserCreate())
+	if e.config.IsDataTypeEnabled(em.EntityTypeUser) {
+		e.dispatcher.Register(em.UserCreate())
+	}
+
+	if e.dispatcher.HandlerCount() > 0 {
+		e.logger.Info("entity manager enabled", zap.Int("handlers", e.dispatcher.HandlerCount()))
+	} else {
+		e.logger.Info("entity manager disabled (no data types enabled)")
+	}
 
 	// Initialize pubsub instances
 	e.blockPubsub = NewPubsub[*db.EtlBlock]()
