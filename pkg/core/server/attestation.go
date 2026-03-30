@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 
 	v1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
@@ -120,7 +122,16 @@ func (s *Server) attestationHasEnoughSigners(ctx context.Context, signers []stri
 		}
 	}
 	if signersNeeded > 0 {
-		s.logger.Info("not enough attestations", zap.Strings("signers", signers), zap.Int("count", len(signers)), zap.Int("needed", len(signers)+signersNeeded))
+		s.logger.Info(
+			"not enough attestations",
+			zap.Strings("signers", signers),
+			zap.Int("count", len(signers)),
+			zap.Int("signers needed", signersNeeded),
+			zap.Int("needed remaining", signersNeeded),
+			zap.Int("rendezvous size", rendezvousSize),
+			zap.Int("filtered addrs", len(filteredAddrs)),
+			zap.Strings("rendezvous", slices.Collect(maps.Keys(rendezvous))),
+		)
 		return false, nil
 	}
 	return true, nil
