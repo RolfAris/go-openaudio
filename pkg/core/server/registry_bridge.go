@@ -305,17 +305,7 @@ func (s *Server) registerSelfOnComet(ctx context.Context, delegateOwnerWallet ge
 	for addr := range rendezvous {
 		if peer, ok := peers[addr]; ok {
 			resp, err := peer.GetRegistrationAttestation(ctx, connect.NewRequest(&corev1.GetRegistrationAttestationRequest{
-				Registration: &corev1.ValidatorRegistration{
-					CometAddress:   s.config.ProposerAddress,
-					PubKey:         s.config.CometKey.PubKey().Bytes(),
-					Power:          int64(s.config.ValidatorVotingPower),
-					DelegateWallet: delegateOwnerWallet.Hex(),
-					Endpoint:       s.config.NodeEndpoint,
-					NodeType:       common.HexToUtf8(serviceType),
-					EthBlock:       ethBlock.Int64(),
-					SpId:           spID,
-					Deadline:       s.cache.currentHeight.Load() + 120,
-				},
+				Registration: reg,
 			}))
 			if err != nil {
 				s.logger.Error("failed to get registration attestation from peer", zap.String("peer_address", addr), zap.Error(err))
