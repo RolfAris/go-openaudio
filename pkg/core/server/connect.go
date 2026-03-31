@@ -85,6 +85,45 @@ func (c *CoreService) IsReady() bool {
 	return c.core != nil
 }
 
+// GetConsensusNodeEndpoints returns the endpoints of nodes in the active CometBFT
+// validator set, cross-referenced with the core_validators DB table for endpoint info.
+func (c *CoreService) GetConsensusNodeEndpoints(ctx context.Context) ([]string, error) {
+	c.coreMu.RLock()
+	defer c.coreMu.RUnlock()
+	if c.core == nil {
+		return nil, fmt.Errorf("core not ready")
+	}
+	if c.core.rpc == nil {
+		return nil, fmt.Errorf("rpc not ready")
+	}
+
+	page, perPage := 1, 100
+	validators, err := c.core.rpc.Validators(ctx, nil, &page, &perPage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch validators: %w", err)
+	}
+
+	allNodes, err := c.core.db.GetAllRegisteredNodesIncludingJailed(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch registered nodes: %w", err)
+	}
+	cometMap := make(map[string]string, len(allNodes))
+	for _, n := range allNodes {
+		if n.Endpoint != "" {
+			cometMap[strings.ToUpper(n.CometAddress)] = n.Endpoint
+		}
+	}
+
+	var endpoints []string
+	for _, val := range validators.Validators {
+		addr := strings.ToUpper(val.Address.String())
+		if ep, ok := cometMap[addr]; ok {
+			endpoints = append(endpoints, ep)
+		}
+	}
+	return endpoints, nil
+}
+
 // GetNodeInfo implements v1connect.CoreServiceHandler.
 func (c *CoreService) GetNodeInfo(ctx context.Context, req *connect.Request[v1.GetNodeInfoRequest]) (*connect.Response[v1.GetNodeInfoResponse], error) {
 	status, err := c.GetStatus(ctx, &connect.Request[v1.GetStatusRequest]{})
