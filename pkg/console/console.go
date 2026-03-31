@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -82,7 +83,7 @@ func NewConsole(etl *etlserver.ETLService, e *echo.Echo, env string) *Console {
 	return &Console{
 		etl:             etl,
 		e:               e,
-		logger:          zap.NewNop().With(zap.String("service", "console")),
+		logger:          zap.Must(zap.NewProduction()).With(zap.String("service", "console")),
 		env:             env,
 		trustedNode:     sdk.NewOpenAudioSDK(trustedNodeURL),
 		refreshInterval: 10 * time.Second,
@@ -96,7 +97,30 @@ func (con *Console) Initialize() {
 	// Initialize validator locations cache with 30 second refresh rate
 	con.validatorLocationsCache = NewCache(con.buildValidatorLocations, 5*time.Minute, con.logger.With(zap.String("service", "validator-locations-cache")))
 
-	// Start background refreshers (but not the dashboard cache yet - that needs ETL to be ready)
+	// Start background cache refreshers
+	// These wait for ETL DB readiness before starting
+	go func() {
+		ctx := context.Background()
+		for con.etl.GetDB() == nil {
+			con.logger.Info("Waiting for ETL DB to be ready (dashboard cache)")
+			time.Sleep(1 * time.Second)
+		}
+		con.logger.Info("Starting dashboard cache refresh")
+		con.dashboardCache.StartRefresh(ctx)
+	}()
+
+	go func() {
+		ctx := context.Background()
+		for con.etl.GetDB() == nil {
+			con.logger.Info("Waiting for ETL DB to be ready (validator locations cache)")
+			time.Sleep(1 * time.Second)
+		}
+		// Give validator sync a moment to populate the DB
+		time.Sleep(5 * time.Second)
+		con.logger.Info("Starting validator locations cache refresh")
+		con.validatorLocationsCache.StartRefresh(ctx)
+	}()
+
 	go con.refreshTrustedBlock()
 
 	e := con.e
@@ -213,15 +237,33 @@ func (con *Console) Run() error {
 		return nil
 	})
 
-	// Start dashboard cache refresh after ETL is ready
+	// Start dashboard cache refresh after ETL DB is ready
 	g.Go(func() error {
-		time.Sleep(2 * time.Second)
+		for con.etl.GetDB() == nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(1 * time.Second):
+				con.logger.Info("Waiting for ETL DB to be ready (dashboard cache)")
+			}
+		}
+		con.logger.Info("Starting dashboard cache refresh")
 		con.dashboardCache.StartRefresh(ctx)
 		return nil
 	})
 
 	g.Go(func() error {
-		time.Sleep(2 * time.Second)
+		for con.etl.GetDB() == nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(1 * time.Second):
+				con.logger.Info("Waiting for ETL DB to be ready (validator locations cache)")
+			}
+		}
+		// Give validator sync a moment to populate the DB
+		time.Sleep(5 * time.Second)
+		con.logger.Info("Starting validator locations cache refresh")
 		con.validatorLocationsCache.StartRefresh(ctx)
 		return nil
 	})
@@ -1600,28 +1642,42 @@ func (con *Console) LiveEventsSSE(c echo.Context) error {
 
 		case play := <-playCh:
 			if play != nil {
-				// Get coordinates for the play location
+				locDB := con.etl.GetLocationDB()
+				ctx := c.Request().Context()
+				var lat, lng float64
+				var found bool
+
+				// Try city-level geocoding first
 				if play.City != "" && play.Region != "" && play.Country != "" {
-					if latLong, err := con.etl.GetLocationDB().GetLatLong(c.Request().Context(), play.City, play.Region, play.Country); err == nil {
-						lat := latLong.Latitude
-						lng := latLong.Longitude
-						// Send play event with coordinates and location info
-						playEvent := SSEEvent{
-							Event: "play",
-							Data: map[string]interface{}{
-								"lat":       lat,
-								"lng":       lng,
-								"city":      play.City,
-								"region":    play.Region,
-								"country":   play.Country,
-								"timestamp": time.Now().Format(time.RFC3339),
-								"duration":  5, // Default 5 seconds for animation
-							},
-						}
-						eventData, _ := json.Marshal(playEvent)
-						fmt.Fprintf(c.Response(), "data: %s\n\n", string(eventData))
-						flusher.Flush()
+					if latLong, err := locDB.GetLatLong(ctx, play.City, play.Region, play.Country); err == nil {
+						lat, lng, found = latLong.Latitude, latLong.Longitude, true
 					}
+				}
+
+				// Fall back to country-level coordinates
+				if !found && play.Country != "" {
+					if latLong, err := locDB.GetCountryLatLong(ctx, play.Country); err == nil {
+						// Add jitter so plays from the same country don't stack
+						lat = latLong.Latitude + (rand.Float64()-0.5)*5
+						lng = latLong.Longitude + (rand.Float64()-0.5)*5
+						found = true
+					}
+				}
+
+				if found {
+					playEvent := SSEEvent{
+						Event: "play",
+						Data: map[string]interface{}{
+							"lat":     lat,
+							"lng":     lng,
+							"city":    play.City,
+							"region":  play.Region,
+							"country": play.Country,
+						},
+					}
+					eventData, _ := json.Marshal(playEvent)
+					fmt.Fprintf(c.Response(), "data: %s\n\n", string(eventData))
+					flusher.Flush()
 				}
 			}
 
@@ -1793,12 +1849,17 @@ func (con *Console) buildValidatorLocations(ctx context.Context) ([]ValidatorLoc
 		wg.Add(1)
 		go func(idx int, ep string, validator db.EtlValidator) {
 			defer wg.Done()
-			req, err := http.NewRequestWithContext(ctx, "GET", ep+"/version", nil)
+			versionURL := ep + "/version"
+			req, err := http.NewRequestWithContext(ctx, "GET", versionURL, nil)
 			if err != nil {
+				con.logger.Warn("Failed to create request for validator version",
+					zap.String("url", versionURL), zap.Error(err))
 				return
 			}
 			resp, err := client.Do(req)
 			if err != nil {
+				con.logger.Warn("Failed to fetch validator version",
+					zap.String("url", versionURL), zap.Error(err))
 				return
 			}
 			var versionResp struct {
@@ -1810,6 +1871,8 @@ func (con *Console) buildValidatorLocations(ctx context.Context) ([]ValidatorLoc
 			err = json.NewDecoder(resp.Body).Decode(&versionResp)
 			resp.Body.Close()
 			if err != nil {
+				con.logger.Warn("Failed to decode validator version response",
+					zap.String("url", versionURL), zap.Error(err))
 				return
 			}
 			if versionResp.Data.Latitude != 0 || versionResp.Data.Longitude != 0 {
