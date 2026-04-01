@@ -128,6 +128,7 @@ type MediorumServer struct {
 	uploadOrigCidCache    *imcache.Cache[string, string]
 	imageCache            *imcache.Cache[string, []byte]
 	trackAccessInfoCache  *imcache.Cache[string, trackAccessInfo]
+	knownPresent          *imcache.Cache[string, int64]
 	failsPeerReachability bool
 
 	StartedAt time.Time
@@ -368,6 +369,7 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 		uploadOrigCidCache:   imcache.New(imcache.WithMaxEntriesLimitOption[string, string](50_000, imcache.EvictionPolicyLRU)),
 		imageCache:           imcache.New(imcache.WithMaxEntriesLimitOption[string, []byte](10_000, imcache.EvictionPolicyLRU)),
 		trackAccessInfoCache: imcache.New(imcache.WithMaxEntriesLimitOption[string, trackAccessInfo](50_000, imcache.EvictionPolicyLRU), imcache.WithDefaultExpirationOption[string, trackAccessInfo](5*time.Minute)),
+		knownPresent:         imcache.New(imcache.WithMaxEntriesLimitOption[string, int64](500_000, imcache.EvictionPolicyLRU)),
 
 		StartedAt:    time.Now().UTC(),
 		Config:       config,
