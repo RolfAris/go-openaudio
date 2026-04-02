@@ -49,6 +49,7 @@ import (
 type trackAccessInfo struct {
 	TrackID            string
 	ManagementKeyCount int
+	DurationSeconds    float64 // track duration in seconds (from FFProbe); 0 means unknown
 }
 
 type MediorumConfig struct {
@@ -79,12 +80,14 @@ type MediorumConfig struct {
 	RepairInterval            time.Duration `default:"1h"`
 
 	ProgrammableDistributionEnabled bool
+	BlobStorageStreaming             bool
 
 	// should have a basedir type of thing
 	// by default will put db + blobs there
 
 	privateKey *ecdsa.PrivateKey
 }
+
 
 type MediorumServer struct {
 	lc               *lifecycle.Lifecycle
@@ -369,8 +372,8 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 		imageCache:           imcache.New(imcache.WithMaxEntriesLimitOption[string, []byte](10_000, imcache.EvictionPolicyLRU)),
 		trackAccessInfoCache: imcache.New(imcache.WithMaxEntriesLimitOption[string, trackAccessInfo](50_000, imcache.EvictionPolicyLRU), imcache.WithDefaultExpirationOption[string, trackAccessInfo](5*time.Minute)),
 
-		StartedAt:    time.Now().UTC(),
-		Config:       config,
+		StartedAt: time.Now().UTC(),
+		Config:    config,
 		geoIPdbReady: make(chan struct{}),
 
 		core: core,
