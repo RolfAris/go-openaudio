@@ -419,3 +419,43 @@ func TestRepairCidWithPresenceIndexShadowMatchStaysOnFastPath(t *testing.T) {
 	assert.Equal(t, before.ShadowAttrCallsTotal+1, after.ShadowAttrCallsTotal)
 	assert.Equal(t, before.ListIndexShadowMismatchTotal, after.ListIndexShadowMismatchTotal)
 }
+
+func TestRepairCidWithPresenceIndexToleratesSubsecondModTimeDrift(t *testing.T) {
+	ctx := context.Background()
+	ss := testNetwork[0]
+
+	data := []byte("presence-index-modtime-tolerance")
+	cid, err := cidutil.ComputeFileCID(bytes.NewReader(data))
+	assert.NoError(t, err)
+	assert.NoError(t, ss.replicateToMyBucket(ctx, cid, bytes.NewReader(data)))
+
+	index, err := ss.buildRepairPresenceIndex(ctx)
+	assert.NoError(t, err)
+	index.shadowCompareEvery = 1
+	index.disableOnShadowMismatch = true
+
+	key := cidutil.ShardCID(cid)
+	entry, ok := index.Lookup(key)
+	assert.True(t, ok)
+	entry.ModTime = entry.ModTime.Add(500 * time.Millisecond)
+	index.entries[key] = entry
+
+	tracker := &RepairTracker{
+		StartedAt:         time.Now(),
+		CleanupMode:       true,
+		QmCidsCleanupMode: true,
+		Counters:          map[string]int{},
+	}
+
+	before := ss.repairSourceEvidence.snapshot()[repairSourceQmCID]
+	assert.NoError(t, ss.repairCidWithPresenceIndex(ctx, cid, []string{ss.Config.Self.Host}, tracker, repairSourceQmCID, false, index))
+
+	after := ss.repairSourceEvidence.snapshot()[repairSourceQmCID]
+	assert.False(t, index.ShouldUsePerKeyAttrsFallback())
+	assert.Equal(t, 1, tracker.Counters["qm_cids_list_index_shadow_compare_total"])
+	assert.Equal(t, 1, tracker.Counters["qm_cids_list_index_shadow_match"])
+	assert.Equal(t, 0, tracker.Counters["qm_cids_list_index_shadow_mismatch"])
+	assert.Equal(t, before.AttrCallsTotal, after.AttrCallsTotal)
+	assert.Equal(t, before.ShadowAttrCallsTotal+1, after.ShadowAttrCallsTotal)
+	assert.Equal(t, before.ListIndexShadowMismatchTotal, after.ListIndexShadowMismatchTotal)
+}

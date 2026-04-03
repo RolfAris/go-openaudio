@@ -4,6 +4,7 @@ import (
 	"context"
 	"hash/fnv"
 	"io"
+	"math"
 	"time"
 )
 
@@ -52,6 +53,16 @@ func (idx *repairPresenceIndex) ShouldShadowCompare(key string) bool {
 	hasher := fnv.New32a()
 	_, _ = hasher.Write([]byte(key))
 	return int(hasher.Sum32()%uint32(idx.shadowCompareEvery)) == 0
+}
+
+func repairPresenceIndexModTimesEquivalent(listModTime, attrModTime time.Time) bool {
+	if listModTime.Equal(attrModTime) {
+		return true
+	}
+	if listModTime.IsZero() || attrModTime.IsZero() {
+		return false
+	}
+	return math.Abs(listModTime.Sub(attrModTime).Seconds()) < 1
 }
 
 func (ss *MediorumServer) buildRepairPresenceIndex(ctx context.Context) (*repairPresenceIndex, error) {

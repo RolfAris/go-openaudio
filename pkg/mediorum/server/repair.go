@@ -485,7 +485,7 @@ func (ss *MediorumServer) repairCidWithPresenceIndex(
 				} else {
 					shadowMismatch := shadowAlreadyHave != alreadyHave
 					if !shadowMismatch && shadowAlreadyHave {
-						shadowMismatch = shadowBlobSize != blobSize || !shadowBlobModTime.Equal(blobModTime)
+						shadowMismatch = shadowBlobSize != blobSize || !repairPresenceIndexModTimesEquivalent(shadowBlobModTime, blobModTime)
 					}
 					resolvedFromShadowCompare = true
 					if shadowMismatch {
