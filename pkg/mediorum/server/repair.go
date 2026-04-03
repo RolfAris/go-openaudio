@@ -32,19 +32,20 @@ type seenKeyResult struct {
 }
 
 type RepairTracker struct {
-	StartedAt        time.Time `gorm:"primaryKey;not null"`
-	UpdatedAt        time.Time `gorm:"not null"`
-	FinishedAt       time.Time
-	CleanupMode      bool                     `gorm:"not null"`
-	CursorI          int                      `gorm:"not null"`
-	CursorUploadID   string                   `gorm:"not null"`
-	CursorPreviewCID string                   ``
-	CursorQmCID      string                   `gorm:"not null"`
-	Counters         map[string]int           `gorm:"not null;serializer:json"`
-	ContentSize      int64                    `gorm:"not null"`
-	Duration         time.Duration            `gorm:"not null"`
-	AbortedReason    string                   `gorm:"not null"`
-	SeenKeys         map[string]seenKeyResult `gorm:"-" json:"-"`
+	StartedAt         time.Time `gorm:"primaryKey;not null"`
+	UpdatedAt         time.Time `gorm:"not null"`
+	FinishedAt        time.Time
+	CleanupMode       bool                     `gorm:"not null"`
+	QmCidsCleanupMode bool                     `gorm:"not null;default:false"`
+	CursorI           int                      `gorm:"not null"`
+	CursorUploadID    string                   `gorm:"not null"`
+	CursorPreviewCID  string                   ``
+	CursorQmCID       string                   `gorm:"not null"`
+	Counters          map[string]int           `gorm:"not null;serializer:json"`
+	ContentSize       int64                    `gorm:"not null"`
+	Duration          time.Duration            `gorm:"not null"`
+	AbortedReason     string                   `gorm:"not null"`
+	SeenKeys          map[string]seenKeyResult `gorm:"-" json:"-"`
 }
 
 func (ss *MediorumServer) startRepairer(ctx context.Context) error {
