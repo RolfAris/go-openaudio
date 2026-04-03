@@ -199,14 +199,14 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorUploadID = u.ID
-			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker)
+			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker, repairSourceUploadOrig)
 			// images are resized dynamically
 			// so only consider audio TranscodeResults for repair
 			if u.Template != JobTemplateAudio {
 				continue
 			}
 			for _, cid := range u.TranscodeResults {
-				ss.repairCid(ctx, cid, u.PlacementHosts, tracker)
+				ss.repairCid(ctx, cid, u.PlacementHosts, tracker, repairSourceUploadTranscode)
 			}
 		}
 
@@ -246,7 +246,7 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorPreviewCID = u.CID
-			ss.repairCid(ctx, u.CID, nil, tracker)
+			ss.repairCid(ctx, u.CID, nil, tracker, repairSourceAudioPreview)
 		}
 
 		tracker.Duration += time.Since(startIter)
@@ -292,7 +292,7 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorQmCID = cid
-			ss.repairCid(ctx, cid, nil, tracker)
+			ss.repairCid(ctx, cid, nil, tracker, repairSourceQmCID)
 		}
 
 		tracker.Duration += time.Since(startIter)
@@ -302,12 +302,13 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 	return ctx.Err()
 }
 
-func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHosts []string, tracker *RepairTracker) error {
+func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHosts []string, tracker *RepairTracker, source string) error {
 	if cid == "" {
 		return nil
 	}
 
 	logger := ss.logger.With(zap.String("task", "repair"), zap.String("cid", cid), zap.Bool("cleanup", tracker.CleanupMode))
+	ss.repairSourceEvidence.recordCall(source)
 
 	preferredHosts, isMine := ss.rendezvousAllHosts(cid)
 
@@ -326,6 +327,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 
 	// fast path: do zero bucket ops if we know we don't care about this cid
 	if !tracker.CleanupMode && !isMine {
+		ss.repairSourceEvidence.recordFastSkipNotMine(source)
 		return nil
 	}
 
@@ -342,6 +344,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 		tracker.SeenKeys = map[string]seenKeyResult{}
 	}
 	if prev, seen := tracker.SeenKeys[key]; seen {
+		ss.repairSourceEvidence.recordCycle(source, true)
 		tracker.Counters["repair_deduped"]++
 		if prev.alreadyHave {
 			tracker.Counters["already_have"]++
@@ -349,9 +352,11 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 		}
 		return nil
 	}
+	ss.repairSourceEvidence.recordCycle(source, false)
 
 	alreadyHave := true
 	attrs := &blob.Attributes{}
+	ss.repairSourceEvidence.recordAttrCall(source)
 	attrs, err := ss.bucket.Attributes(ctx, key)
 	if err != nil {
 		if gcerrors.Code(err) == gcerrors.NotFound || strings.Contains(err.Error(), "notFound") {
@@ -418,6 +423,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 
 	// get blobs that I should have (regardless of health of other nodes)
 	if isMine && !alreadyHave && ss.diskHasSpace() {
+		ss.repairSourceEvidence.recordPullMineNeeded(source)
 		tracker.Counters["pull_mine_needed"]++
 
 		success := false

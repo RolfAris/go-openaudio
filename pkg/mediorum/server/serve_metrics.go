@@ -12,10 +12,11 @@ import (
 )
 
 type Metrics struct {
-	Host              string         `json:"host"`
-	Uploads           int64          `json:"uploads"`
-	OutboxSizes       map[string]int `json:"outbox_sizes"`
-	RedirectCacheSize int            `json:"redirect_cache_size"`
+	Host                        string                          `json:"host"`
+	Uploads                     int64                           `json:"uploads"`
+	OutboxSizes                 map[string]int                  `json:"outbox_sizes"`
+	RedirectCacheSize           int                             `json:"redirect_cache_size"`
+	StorageRepairSourceEvidence map[string]repairSourceEvidence `json:"storage_repair_source_evidence"`
 }
 
 type BlobMetric struct {
@@ -42,6 +43,7 @@ func (ss *MediorumServer) getMetrics(c echo.Context) error {
 	m.Uploads = ss.uploadsCount
 	m.OutboxSizes = ss.crud.GetOutboxSizes()
 	m.RedirectCacheSize = ss.redirectCache.Len()
+	m.StorageRepairSourceEvidence = ss.repairSourceEvidence.snapshot()
 
 	return c.JSON(200, m)
 }
