@@ -146,6 +146,14 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 			logger.Warn("failed to parse OPENAUDIO_REPAIR_INTERVAL, using default 1h", zap.String("value", ri), zap.Error(err))
 		}
 	}
+	repairCleanupEvery := 4
+	if rce := os.Getenv("OPENAUDIO_REPAIR_CLEANUP_EVERY"); rce != "" {
+		if parsed, err := strconv.Atoi(rce); err == nil {
+			repairCleanupEvery = parsed
+		} else {
+			logger.Warn("failed to parse OPENAUDIO_REPAIR_CLEANUP_EVERY, using default 4", zap.String("value", rce), zap.Error(err))
+		}
+	}
 
 	config := server.MediorumConfig{
 		Self: registrar.Peer{
@@ -174,6 +182,8 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		DeadHosts:                 []string{},
 		RepairEnabled:             repairEnabled,
 		RepairInterval:            repairInterval,
+		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
+		RepairCleanupEvery:        repairCleanupEvery,
 		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
 	}
 

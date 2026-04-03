@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	abortContextCanceled = "CONTEXT_CANCELED"
+	abortContextCanceled      = "CONTEXT_CANCELED"
+	defaultRepairCleanupEvery = 4
 )
 
 // seenKeyResult stores the outcome of a previous Attributes check for the same
@@ -31,19 +32,19 @@ type seenKeyResult struct {
 }
 
 type RepairTracker struct {
-	StartedAt      time.Time `gorm:"primaryKey;not null"`
-	UpdatedAt      time.Time `gorm:"not null"`
-	FinishedAt     time.Time
-	CleanupMode    bool           `gorm:"not null"`
-	CursorI        int            `gorm:"not null"`
-	CursorUploadID string         `gorm:"not null"`
-	CursorPreviewCID string       ``
-	CursorQmCID    string         `gorm:"not null"`
-	Counters       map[string]int `gorm:"not null;serializer:json"`
-	ContentSize    int64          `gorm:"not null"`
-	Duration       time.Duration  `gorm:"not null"`
-	AbortedReason  string         `gorm:"not null"`
-	SeenKeys       map[string]seenKeyResult `gorm:"-" json:"-"`
+	StartedAt        time.Time `gorm:"primaryKey;not null"`
+	UpdatedAt        time.Time `gorm:"not null"`
+	FinishedAt       time.Time
+	CleanupMode      bool                     `gorm:"not null"`
+	CursorI          int                      `gorm:"not null"`
+	CursorUploadID   string                   `gorm:"not null"`
+	CursorPreviewCID string                   ``
+	CursorQmCID      string                   `gorm:"not null"`
+	Counters         map[string]int           `gorm:"not null;serializer:json"`
+	ContentSize      int64                    `gorm:"not null"`
+	Duration         time.Duration            `gorm:"not null"`
+	AbortedReason    string                   `gorm:"not null"`
+	SeenKeys         map[string]seenKeyResult `gorm:"-" json:"-"`
 }
 
 func (ss *MediorumServer) startRepairer(ctx context.Context) error {
@@ -56,7 +57,11 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 	}
 
 	repairInterval := ss.Config.RepairInterval
-	logger.Info("repair configured", zap.Duration("interval", repairInterval))
+	repairCleanupEvery := ss.Config.RepairCleanupEvery
+	if repairCleanupEvery <= 0 {
+		repairCleanupEvery = defaultRepairCleanupEvery
+	}
+	logger.Info("repair configured", zap.Duration("interval", repairInterval), zap.Int("cleanupEvery", repairCleanupEvery))
 
 	// wait a minute on startup to determine healthy peers
 	ticker := time.NewTicker(1 * time.Minute)
@@ -79,13 +84,7 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 					tracker = lastRun
 				} else {
 					// run the next job
-					tracker.CursorI = lastRun.CursorI + 1
-
-					// every few runs, run cleanup mode
-					if tracker.CursorI > 4 {
-						tracker.CursorI = 1
-					}
-					tracker.CleanupMode = tracker.CursorI == 1
+					tracker.CursorI, tracker.CleanupMode = nextRepairCursor(lastRun.CursorI, repairCleanupEvery)
 				}
 			} else {
 				if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -145,6 +144,17 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+func nextRepairCursor(lastCursor int, cleanupEvery int) (int, bool) {
+	if cleanupEvery <= 0 {
+		cleanupEvery = defaultRepairCleanupEvery
+	}
+	cursor := lastCursor + 1
+	if cursor > cleanupEvery {
+		cursor = 1
+	}
+	return cursor, cursor == 1
 }
 
 func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker) error {

@@ -78,16 +78,16 @@ type MediorumConfig struct {
 	DeadHosts                 []string
 	RepairEnabled             bool          `default:"true"`
 	RepairInterval            time.Duration `default:"1h"`
+	RepairCleanupEvery        int           `default:"4"`
 
 	ProgrammableDistributionEnabled bool
-	BlobStorageStreaming             bool
+	BlobStorageStreaming            bool
 
 	// should have a basedir type of thing
 	// by default will put db + blobs there
 
 	privateKey *ecdsa.PrivateKey
 }
-
 
 type MediorumServer struct {
 	lc               *lifecycle.Lifecycle
@@ -372,8 +372,8 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 		imageCache:           imcache.New(imcache.WithMaxEntriesLimitOption[string, []byte](10_000, imcache.EvictionPolicyLRU)),
 		trackAccessInfoCache: imcache.New(imcache.WithMaxEntriesLimitOption[string, trackAccessInfo](50_000, imcache.EvictionPolicyLRU), imcache.WithDefaultExpirationOption[string, trackAccessInfo](5*time.Minute)),
 
-		StartedAt: time.Now().UTC(),
-		Config:    config,
+		StartedAt:    time.Now().UTC(),
+		Config:       config,
 		geoIPdbReady: make(chan struct{}),
 
 		core: core,

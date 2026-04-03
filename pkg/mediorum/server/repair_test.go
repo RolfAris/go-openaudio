@@ -162,3 +162,21 @@ func TestRepair(t *testing.T) {
 	}
 
 }
+
+func TestNextRepairCursorRespectsCleanupEvery(t *testing.T) {
+	cursor, cleanup := nextRepairCursor(3, 4)
+	assert.Equal(t, 4, cursor)
+	assert.False(t, cleanup)
+
+	cursor, cleanup = nextRepairCursor(4, 4)
+	assert.Equal(t, 1, cursor)
+	assert.True(t, cleanup)
+
+	cursor, cleanup = nextRepairCursor(11, 12)
+	assert.Equal(t, 12, cursor)
+	assert.False(t, cleanup)
+
+	cursor, cleanup = nextRepairCursor(12, 12)
+	assert.Equal(t, 1, cursor)
+	assert.True(t, cleanup)
+}
