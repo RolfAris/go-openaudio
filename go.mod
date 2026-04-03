@@ -1,6 +1,6 @@
 module github.com/OpenAudio/go-openaudio
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/OpenAudio/go-openaudio/etl v0.0.0
@@ -28,7 +28,7 @@ require (
 	go.etcd.io/bbolt v1.4.0-alpha.0.0.20240404170359-43604f3112c5
 	gocloud.dev v0.40.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
-	golang.org/x/sync v0.14.0
+	golang.org/x/sync v0.20.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
 	gorm.io/driver/postgres v1.5.0
@@ -56,8 +56,8 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.1
 	github.com/tus/tusd/v2 v2.8.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.38.0
-	golang.org/x/mod v0.24.0
+	golang.org/x/crypto v0.48.0
+	golang.org/x/mod v0.33.0
 	modernc.org/sqlite v1.38.0
 )
 
@@ -229,11 +229,11 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/image v0.20.0 // indirect
+	golang.org/x/image v0.38.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
-	golang.org/x/tools v0.33.0 // indirect
+	golang.org/x/tools v0.42.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.224.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
@@ -257,8 +257,8 @@ require (
 	github.com/multiformats/go-varint v0.0.6 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	go.akshayshah.org/connectproto v0.6.0
-	golang.org/x/net v0.40.0
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/net v0.50.0
+	golang.org/x/sys v0.41.0 // indirect
 	lukechampine.com/blake3 v1.1.6 // indirect
 )
 
