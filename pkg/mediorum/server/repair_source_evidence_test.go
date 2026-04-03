@@ -16,6 +16,9 @@ func TestRepairSourceEvidenceTrackerSnapshot(t *testing.T) {
 	tracker.recordCycle(repairSourceQmCID, false)
 	tracker.recordCycle(repairSourceQmCID, true)
 	tracker.recordAttrCall(repairSourceQmCID)
+	tracker.recordShadowAttrCall(repairSourceQmCID)
+	tracker.recordListIndexShadowMismatch(repairSourceQmCID)
+	tracker.recordListIndexFallback(repairSourceQmCID)
 	tracker.recordPullMineNeeded(repairSourceQmCID)
 
 	snapshot := tracker.snapshot()
@@ -25,6 +28,9 @@ func TestRepairSourceEvidenceTrackerSnapshot(t *testing.T) {
 	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].CycleUnique)
 	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].CycleDuplicate)
 	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].AttrCallsTotal)
+	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].ShadowAttrCallsTotal)
+	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].ListIndexShadowMismatchTotal)
+	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].ListIndexFallbackTotal)
 	assert.Equal(t, uint64(1), snapshot[repairSourceQmCID].PullMineNeededTotal)
 }
 

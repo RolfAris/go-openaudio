@@ -163,38 +163,49 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		}
 	}
 	repairQmCidsUseListIndex := getenvWithDefault("OPENAUDIO_REPAIR_QM_CIDS_USE_LIST_INDEX", "false") == "true"
+	repairQmCidsListIndexShadowCompareEvery := 0
+	if rsce := os.Getenv("OPENAUDIO_REPAIR_QM_CIDS_LIST_INDEX_SHADOW_COMPARE_EVERY"); rsce != "" {
+		if parsed, err := strconv.Atoi(rsce); err == nil && parsed >= 0 {
+			repairQmCidsListIndexShadowCompareEvery = parsed
+		} else {
+			logger.Warn("failed to parse OPENAUDIO_REPAIR_QM_CIDS_LIST_INDEX_SHADOW_COMPARE_EVERY, using default 0", zap.String("value", rsce), zap.Error(err))
+		}
+	}
+	repairQmCidsListIndexDisableOnMismatch := getenvWithDefault("OPENAUDIO_REPAIR_QM_CIDS_LIST_INDEX_DISABLE_ON_MISMATCH", "true") == "true"
 
 	config := server.MediorumConfig{
 		Self: registrar.Peer{
 			Host:   httputil.RemoveTrailingSlash(strings.ToLower(nodeEndpoint)),
 			Wallet: strings.ToLower(walletAddress),
 		},
-		ListenPort:                "1991",
-		Peers:                     peers,
-		Signers:                   signers,
-		ReplicationFactor:         replicationFactor,
-		PrivateKey:                privateKeyHex,
-		Dir:                       dir,
-		PostgresDSN:               getenvWithDefault("dbUrl", "postgres://postgres:postgres@db:5432/audius_creator_node"),
-		BlobStoreDSN:              blobStoreDSN,
-		MoveFromBlobStoreDSN:      moveFromBlobStoreDSN,
-		TrustedNotifierID:         trustedNotifierID,
-		SPID:                      spID,
-		SPOwnerWallet:             spOwnerWallet,
-		GitSHA:                    os.Getenv("GIT_SHA"),
-		AudiusDockerCompose:       os.Getenv("AUDIUS_DOCKER_COMPOSE_GIT_SHA"),
-		AutoUpgradeEnabled:        os.Getenv("autoUpgradeEnabled") == "true",
-		StoreAll:                  os.Getenv("STORE_ALL") == "true",
-		VersionJson:               version.Version,
-		DiscoveryListensEndpoints: discoveryListensEndpoints(),
-		LogLevel:                  getenvWithDefault("OPENAUDIO_LOG_LEVEL", "info"),
-		DeadHosts:                 []string{},
-		RepairEnabled:             repairEnabled,
-		RepairInterval:            repairInterval,
-		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
-		RepairCleanupEvery:        repairCleanupEvery,
-		RepairQmCidsCleanupEvery:  repairQmCidsCleanupEvery,
-		RepairQmCidsUseListIndex:  repairQmCidsUseListIndex,
+		ListenPort:                              "1991",
+		Peers:                                   peers,
+		Signers:                                 signers,
+		ReplicationFactor:                       replicationFactor,
+		PrivateKey:                              privateKeyHex,
+		Dir:                                     dir,
+		PostgresDSN:                             getenvWithDefault("dbUrl", "postgres://postgres:postgres@db:5432/audius_creator_node"),
+		BlobStoreDSN:                            blobStoreDSN,
+		MoveFromBlobStoreDSN:                    moveFromBlobStoreDSN,
+		TrustedNotifierID:                       trustedNotifierID,
+		SPID:                                    spID,
+		SPOwnerWallet:                           spOwnerWallet,
+		GitSHA:                                  os.Getenv("GIT_SHA"),
+		AudiusDockerCompose:                     os.Getenv("AUDIUS_DOCKER_COMPOSE_GIT_SHA"),
+		AutoUpgradeEnabled:                      os.Getenv("autoUpgradeEnabled") == "true",
+		StoreAll:                                os.Getenv("STORE_ALL") == "true",
+		VersionJson:                             version.Version,
+		DiscoveryListensEndpoints:               discoveryListensEndpoints(),
+		LogLevel:                                getenvWithDefault("OPENAUDIO_LOG_LEVEL", "info"),
+		DeadHosts:                               []string{},
+		RepairEnabled:                           repairEnabled,
+		RepairInterval:                          repairInterval,
+		BlobStorageStreaming:                    os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
+		RepairCleanupEvery:                      repairCleanupEvery,
+		RepairQmCidsCleanupEvery:                repairQmCidsCleanupEvery,
+		RepairQmCidsUseListIndex:                repairQmCidsUseListIndex,
+		RepairQmCidsListIndexShadowCompareEvery: repairQmCidsListIndexShadowCompareEvery,
+		RepairQmCidsListIndexDisableOnMismatch:  repairQmCidsListIndexDisableOnMismatch,
 	}
 
 	ss, err := server.New(lc, logger, config, posChannel, core, ethService)

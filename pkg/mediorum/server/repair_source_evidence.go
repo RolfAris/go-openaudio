@@ -10,14 +10,17 @@ const (
 )
 
 type repairSourceEvidence struct {
-	CallsTotal            uint64 `json:"calls_total"`
-	FastSkipNotMineTotal  uint64 `json:"fast_skip_not_mine_total"`
-	CycleTotal            uint64 `json:"cycle_total"`
-	CycleUnique           uint64 `json:"cycle_unique"`
-	CycleDuplicate        uint64 `json:"cycle_duplicate"`
-	KnownPresentHitsTotal uint64 `json:"known_present_hits_total"`
-	AttrCallsTotal        uint64 `json:"attr_calls_total"`
-	PullMineNeededTotal   uint64 `json:"pull_mine_needed_total"`
+	CallsTotal                   uint64 `json:"calls_total"`
+	FastSkipNotMineTotal         uint64 `json:"fast_skip_not_mine_total"`
+	CycleTotal                   uint64 `json:"cycle_total"`
+	CycleUnique                  uint64 `json:"cycle_unique"`
+	CycleDuplicate               uint64 `json:"cycle_duplicate"`
+	KnownPresentHitsTotal        uint64 `json:"known_present_hits_total"`
+	AttrCallsTotal               uint64 `json:"attr_calls_total"`
+	ShadowAttrCallsTotal         uint64 `json:"shadow_attr_calls_total"`
+	ListIndexShadowMismatchTotal uint64 `json:"list_index_shadow_mismatch_total"`
+	ListIndexFallbackTotal       uint64 `json:"list_index_fallback_total"`
+	PullMineNeededTotal          uint64 `json:"pull_mine_needed_total"`
 }
 
 type repairSourceEvidenceTracker struct {
@@ -79,6 +82,24 @@ func (t *repairSourceEvidenceTracker) recordAttrCall(source string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.sourceState(source).AttrCallsTotal++
+}
+
+func (t *repairSourceEvidenceTracker) recordShadowAttrCall(source string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.sourceState(source).ShadowAttrCallsTotal++
+}
+
+func (t *repairSourceEvidenceTracker) recordListIndexShadowMismatch(source string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.sourceState(source).ListIndexShadowMismatchTotal++
+}
+
+func (t *repairSourceEvidenceTracker) recordListIndexFallback(source string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.sourceState(source).ListIndexFallbackTotal++
 }
 
 func (t *repairSourceEvidenceTracker) recordPullMineNeeded(source string) {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"hash/fnv"
 	"io"
 	"time"
 )
@@ -12,7 +13,10 @@ type repairPresenceIndexEntry struct {
 }
 
 type repairPresenceIndex struct {
-	entries map[string]repairPresenceIndexEntry
+	entries                 map[string]repairPresenceIndexEntry
+	shadowCompareEvery      int
+	disableOnShadowMismatch bool
+	fallbackToPerKeyAttrs   bool
 }
 
 func (idx *repairPresenceIndex) Len() int {
@@ -30,10 +34,32 @@ func (idx *repairPresenceIndex) Lookup(key string) (repairPresenceIndexEntry, bo
 	return entry, ok
 }
 
+func (idx *repairPresenceIndex) ShouldUsePerKeyAttrsFallback() bool {
+	return idx != nil && idx.fallbackToPerKeyAttrs
+}
+
+func (idx *repairPresenceIndex) EnablePerKeyAttrsFallback() {
+	if idx == nil {
+		return
+	}
+	idx.fallbackToPerKeyAttrs = true
+}
+
+func (idx *repairPresenceIndex) ShouldShadowCompare(key string) bool {
+	if idx == nil || idx.shadowCompareEvery <= 0 {
+		return false
+	}
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(key))
+	return int(hasher.Sum32()%uint32(idx.shadowCompareEvery)) == 0
+}
+
 func (ss *MediorumServer) buildRepairPresenceIndex(ctx context.Context) (*repairPresenceIndex, error) {
 	iter := ss.bucket.List(nil)
 	index := &repairPresenceIndex{
-		entries: map[string]repairPresenceIndexEntry{},
+		entries:                 map[string]repairPresenceIndexEntry{},
+		shadowCompareEvery:      ss.Config.RepairQmCidsListIndexShadowCompareEvery,
+		disableOnShadowMismatch: ss.Config.RepairQmCidsListIndexDisableOnMismatch,
 	}
 
 	for {

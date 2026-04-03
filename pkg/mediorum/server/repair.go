@@ -13,7 +13,6 @@ import (
 
 	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/labstack/echo/v4"
-	"gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
 	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
@@ -73,6 +72,8 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 		zap.Int("cleanupEvery", repairCleanupEvery),
 		zap.Int("qmCidsCleanupEvery", repairQmCidsCleanupEvery),
 		zap.Bool("qmCidsUseListIndex", ss.Config.RepairQmCidsUseListIndex),
+		zap.Int("qmCidsListIndexShadowCompareEvery", ss.Config.RepairQmCidsListIndexShadowCompareEvery),
+		zap.Bool("qmCidsListIndexDisableOnMismatch", ss.Config.RepairQmCidsListIndexDisableOnMismatch),
 	)
 
 	// wait a minute on startup to determine healthy peers
@@ -205,6 +206,17 @@ func (ss *MediorumServer) qmCidsCleanupModeForRun(tracker *RepairTracker) bool {
 	return shouldRunQmCidsCleanup(priorSuccessfulCleanups+1, cleanupEvery)
 }
 
+func (ss *MediorumServer) bucketPresenceForRepair(ctx context.Context, key string) (bool, int64, time.Time, error) {
+	attrs, err := ss.bucket.Attributes(ctx, key)
+	if err != nil {
+		if gcerrors.Code(err) == gcerrors.NotFound || strings.Contains(err.Error(), "notFound") {
+			return false, 0, time.Time{}, nil
+		}
+		return false, 0, time.Time{}, err
+	}
+	return true, attrs.Size, attrs.ModTime, nil
+}
+
 func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker) error {
 	saveTracker := func() {
 		tracker.UpdatedAt = time.Now()
@@ -308,10 +320,12 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 		if err != nil {
 			ss.logger.Warn("failed to build qm_cids repair presence index; falling back to per-key bucket attributes", zap.Error(err))
 			tracker.Counters["qm_cids_list_index_build_fail"]++
+			tracker.Counters["qm_cids_list_index_build_duration_ms"] = int(time.Since(indexStartedAt).Milliseconds())
 		} else {
 			qmCidsPresenceIndex = index
 			tracker.Counters["qm_cids_list_index_build_success"]++
 			tracker.Counters["qm_cids_list_index_entries"] = index.Len()
+			tracker.Counters["qm_cids_list_index_build_duration_ms"] = int(time.Since(indexStartedAt).Milliseconds())
 			tracker.Duration += time.Since(indexStartedAt)
 		}
 	}
@@ -442,32 +456,68 @@ func (ss *MediorumServer) repairCidWithPresenceIndex(
 	alreadyHave := false
 	blobSize := int64(0)
 	blobModTime := time.Time{}
+	var err error
+	resolvedFromShadowCompare := false
 	if presenceIndex != nil {
-		tracker.Counters["qm_cids_list_index_lookup"]++
-		if entry, ok := presenceIndex.Lookup(key); ok {
-			alreadyHave = true
-			blobSize = entry.Size
-			blobModTime = entry.ModTime
-			tracker.Counters["qm_cids_list_index_present"]++
+		if presenceIndex.ShouldUsePerKeyAttrsFallback() {
+			tracker.Counters["qm_cids_list_index_fallback_lookup"]++
+			ss.repairSourceEvidence.recordListIndexFallback(source)
 		} else {
-			tracker.Counters["qm_cids_list_index_missing"]++
+			tracker.Counters["qm_cids_list_index_lookup"]++
+			if entry, ok := presenceIndex.Lookup(key); ok {
+				alreadyHave = true
+				blobSize = entry.Size
+				blobModTime = entry.ModTime
+				tracker.Counters["qm_cids_list_index_present"]++
+			} else {
+				tracker.Counters["qm_cids_list_index_missing"]++
+			}
+
+			if presenceIndex.ShouldShadowCompare(key) {
+				tracker.Counters["qm_cids_list_index_shadow_compare_total"]++
+				ss.repairSourceEvidence.recordShadowAttrCall(source)
+
+				shadowAlreadyHave, shadowBlobSize, shadowBlobModTime, err := ss.bucketPresenceForRepair(ctx, key)
+				if err != nil {
+					tracker.Counters["read_attrs_fail"]++
+					tracker.Counters["qm_cids_list_index_shadow_compare_fail"]++
+					logger.Error("shadow compare exist check failed", zap.Error(err))
+				} else {
+					shadowMismatch := shadowAlreadyHave != alreadyHave
+					if !shadowMismatch && shadowAlreadyHave {
+						shadowMismatch = shadowBlobSize != blobSize || !shadowBlobModTime.Equal(blobModTime)
+					}
+					resolvedFromShadowCompare = true
+					if shadowMismatch {
+						tracker.Counters["qm_cids_list_index_shadow_mismatch"]++
+						ss.repairSourceEvidence.recordListIndexShadowMismatch(source)
+						alreadyHave = shadowAlreadyHave
+						blobSize = shadowBlobSize
+						blobModTime = shadowBlobModTime
+						if presenceIndex.disableOnShadowMismatch {
+							presenceIndex.EnablePerKeyAttrsFallback()
+							tracker.Counters["qm_cids_list_index_fallback_triggered"]++
+							ss.repairSourceEvidence.recordListIndexFallback(source)
+						}
+					} else {
+						tracker.Counters["qm_cids_list_index_shadow_match"]++
+					}
+				}
+			}
+		}
+	}
+	if (presenceIndex == nil || presenceIndex.ShouldUsePerKeyAttrsFallback()) && !resolvedFromShadowCompare {
+		ss.repairSourceEvidence.recordAttrCall(source)
+		alreadyHave, blobSize, blobModTime, err = ss.bucketPresenceForRepair(ctx, key)
+		if err != nil {
+			tracker.Counters["read_attrs_fail"]++
+			logger.Error("exist check failed", zap.Error(err))
+			alreadyHave = false
+			blobSize = 0
+			blobModTime = time.Time{}
 		}
 	} else {
-		ss.repairSourceEvidence.recordAttrCall(source)
-		attrs, err := ss.bucket.Attributes(ctx, key)
-		if err != nil {
-			if gcerrors.Code(err) == gcerrors.NotFound || strings.Contains(err.Error(), "notFound") {
-				alreadyHave = false
-			} else {
-				tracker.Counters["read_attrs_fail"]++
-				logger.Error("exist check failed", zap.Error(err))
-				alreadyHave = false
-			}
-		} else {
-			alreadyHave = true
-			blobSize = attrs.Size
-			blobModTime = attrs.ModTime
-		}
+		// already populated by the presence index path
 	}
 
 	// Store result for future duplicate checks within this cycle.
@@ -484,11 +534,12 @@ func (ss *MediorumServer) repairCidWithPresenceIndex(
 				logger.Error("deleting invalid CID", zap.Error(errVal))
 				if errDel := ss.bucket.Delete(ctx, key); errDel == nil {
 					tracker.Counters["delete_invalid_success"]++
+					tracker.SeenKeys[key] = seenKeyResult{alreadyHave: false}
 				} else {
 					tracker.Counters["delete_invalid_fail"]++
 					logger.Error("failed to delete invalid CID", zap.Error(errDel))
 				}
-				return err
+				return nil
 			}
 
 			if errClose != nil {

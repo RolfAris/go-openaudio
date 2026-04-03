@@ -53,34 +53,36 @@ type trackAccessInfo struct {
 }
 
 type MediorumConfig struct {
-	Env                       string
-	Self                      registrar.Peer
-	Peers                     []registrar.Peer
-	Signers                   []registrar.Peer
-	ReplicationFactor         int
-	Dir                       string `default:"/tmp/mediorum"`
-	BlobStoreDSN              string `json:"-"`
-	MoveFromBlobStoreDSN      string `json:"-"`
-	PostgresDSN               string `json:"-"`
-	PrivateKey                string `json:"-"`
-	ListenPort                string
-	TrustedNotifierID         int
-	SPID                      int
-	SPOwnerWallet             string
-	GitSHA                    string
-	AudiusDockerCompose       string
-	AutoUpgradeEnabled        bool
-	WalletIsRegistered        bool
-	StoreAll                  bool
-	VersionJson               version.VersionJson
-	DiscoveryListensEndpoints []string
-	LogLevel                  string
-	DeadHosts                 []string
-	RepairEnabled             bool          `default:"true"`
-	RepairInterval            time.Duration `default:"1h"`
-	RepairCleanupEvery        int           `default:"4"`
-	RepairQmCidsCleanupEvery  int           `default:"1"`
-	RepairQmCidsUseListIndex  bool
+	Env                                     string
+	Self                                    registrar.Peer
+	Peers                                   []registrar.Peer
+	Signers                                 []registrar.Peer
+	ReplicationFactor                       int
+	Dir                                     string `default:"/tmp/mediorum"`
+	BlobStoreDSN                            string `json:"-"`
+	MoveFromBlobStoreDSN                    string `json:"-"`
+	PostgresDSN                             string `json:"-"`
+	PrivateKey                              string `json:"-"`
+	ListenPort                              string
+	TrustedNotifierID                       int
+	SPID                                    int
+	SPOwnerWallet                           string
+	GitSHA                                  string
+	AudiusDockerCompose                     string
+	AutoUpgradeEnabled                      bool
+	WalletIsRegistered                      bool
+	StoreAll                                bool
+	VersionJson                             version.VersionJson
+	DiscoveryListensEndpoints               []string
+	LogLevel                                string
+	DeadHosts                               []string
+	RepairEnabled                           bool          `default:"true"`
+	RepairInterval                          time.Duration `default:"1h"`
+	RepairCleanupEvery                      int           `default:"4"`
+	RepairQmCidsCleanupEvery                int           `default:"1"`
+	RepairQmCidsUseListIndex                bool
+	RepairQmCidsListIndexShadowCompareEvery int
+	RepairQmCidsListIndexDisableOnMismatch  bool
 
 	ProgrammableDistributionEnabled bool
 	BlobStorageStreaming            bool
