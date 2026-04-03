@@ -79,6 +79,7 @@ type MediorumConfig struct {
 	RepairEnabled             bool          `default:"true"`
 	RepairInterval            time.Duration `default:"1h"`
 	RepairCleanupEvery        int           `default:"4"`
+	RepairQmCidsCleanupEvery  int           `default:"1"`
 
 	ProgrammableDistributionEnabled bool
 	BlobStorageStreaming            bool

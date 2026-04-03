@@ -180,3 +180,44 @@ func TestNextRepairCursorRespectsCleanupEvery(t *testing.T) {
 	assert.Equal(t, 1, cursor)
 	assert.True(t, cleanup)
 }
+
+func TestShouldRunQmCidsCleanup(t *testing.T) {
+	assert.True(t, shouldRunQmCidsCleanup(1, 1))
+	assert.True(t, shouldRunQmCidsCleanup(1, 12))
+	assert.False(t, shouldRunQmCidsCleanup(2, 12))
+	assert.False(t, shouldRunQmCidsCleanup(12, 12))
+	assert.True(t, shouldRunQmCidsCleanup(13, 12))
+	assert.False(t, shouldRunQmCidsCleanup(1, 0))
+}
+
+func TestRepairCidWithCleanupOverrideSkipsNotMineFastPath(t *testing.T) {
+	ctx := context.Background()
+	ss := testNetwork[0]
+
+	var cid string
+	for i := 0; i < 128; i++ {
+		candidate, err := cidutil.ComputeFileCID(bytes.NewReader([]byte("qm-cleanup-fast-skip-" + string(rune('a'+i)))))
+		assert.NoError(t, err)
+		_, isMine := ss.rendezvousAllHosts(candidate)
+		if !isMine {
+			cid = candidate
+			break
+		}
+	}
+	if cid == "" {
+		t.Fatal("failed to find cid that is not mine")
+	}
+
+	tracker := &RepairTracker{
+		StartedAt:         time.Now(),
+		CleanupMode:       true,
+		QmCidsCleanupMode: false,
+		Counters:          map[string]int{},
+	}
+
+	assert.NoError(t, ss.repairCidWithCleanupMode(ctx, cid, nil, tracker, repairSourceQmCID, false))
+	assert.Equal(t, 0, tracker.Counters["total_checked"])
+
+	snapshot := ss.repairSourceEvidence.snapshot()
+	assert.Positive(t, snapshot[repairSourceQmCID].FastSkipNotMineTotal)
+}

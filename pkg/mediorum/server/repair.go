@@ -22,6 +22,7 @@ import (
 const (
 	abortContextCanceled      = "CONTEXT_CANCELED"
 	defaultRepairCleanupEvery = 4
+	defaultQmCidsCleanupEvery = 1
 )
 
 // seenKeyResult stores the outcome of a previous Attributes check for the same
@@ -62,7 +63,16 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 	if repairCleanupEvery <= 0 {
 		repairCleanupEvery = defaultRepairCleanupEvery
 	}
-	logger.Info("repair configured", zap.Duration("interval", repairInterval), zap.Int("cleanupEvery", repairCleanupEvery))
+	repairQmCidsCleanupEvery := ss.Config.RepairQmCidsCleanupEvery
+	if repairQmCidsCleanupEvery < 0 {
+		repairQmCidsCleanupEvery = defaultQmCidsCleanupEvery
+	}
+	logger.Info(
+		"repair configured",
+		zap.Duration("interval", repairInterval),
+		zap.Int("cleanupEvery", repairCleanupEvery),
+		zap.Int("qmCidsCleanupEvery", repairQmCidsCleanupEvery),
+	)
 
 	// wait a minute on startup to determine healthy peers
 	ticker := time.NewTicker(1 * time.Minute)
@@ -92,7 +102,12 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 					logger.Error("failed to get last repair.go run", zap.Error(err))
 				}
 			}
-			logger := logger.With(zap.Int("run", tracker.CursorI), zap.Bool("cleanupMode", tracker.CleanupMode))
+			tracker.QmCidsCleanupMode = ss.qmCidsCleanupModeForRun(&tracker)
+			logger := logger.With(
+				zap.Int("run", tracker.CursorI),
+				zap.Bool("cleanupMode", tracker.CleanupMode),
+				zap.Bool("qmCidsCleanupMode", tracker.QmCidsCleanupMode),
+			)
 
 			saveTracker := func() {
 				tracker.UpdatedAt = time.Now()
@@ -156,6 +171,37 @@ func nextRepairCursor(lastCursor int, cleanupEvery int) (int, bool) {
 		cursor = 1
 	}
 	return cursor, cursor == 1
+}
+
+func shouldRunQmCidsCleanup(cleanupOrdinal int64, cleanupEvery int) bool {
+	if cleanupEvery < 0 {
+		cleanupEvery = defaultQmCidsCleanupEvery
+	}
+	if cleanupEvery == 0 {
+		return false
+	}
+	if cleanupOrdinal <= 0 {
+		cleanupOrdinal = 1
+	}
+	return (cleanupOrdinal-1)%int64(cleanupEvery) == 0
+}
+
+func (ss *MediorumServer) qmCidsCleanupModeForRun(tracker *RepairTracker) bool {
+	if tracker == nil || !tracker.CleanupMode {
+		return false
+	}
+	cleanupEvery := ss.Config.RepairQmCidsCleanupEvery
+	if cleanupEvery < 0 {
+		cleanupEvery = defaultQmCidsCleanupEvery
+	}
+	var priorSuccessfulCleanups int64
+	if err := ss.crud.DB.Model(&RepairTracker{}).
+		Where("cleanup_mode = true and started_at < ? and finished_at is not null and finished_at != ? and aborted_reason = ?", tracker.StartedAt, time.Time{}, "").
+		Count(&priorSuccessfulCleanups).Error; err != nil {
+		ss.logger.Warn("failed to count prior successful cleanup runs for qm_cids cleanup cadence", zap.Error(err))
+		return shouldRunQmCidsCleanup(1, cleanupEvery)
+	}
+	return shouldRunQmCidsCleanup(priorSuccessfulCleanups+1, cleanupEvery)
 }
 
 func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker) error {
@@ -253,6 +299,8 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 		saveTracker()
 	}
 
+	qmCidsCleanupMode := tracker.CleanupMode && tracker.QmCidsCleanupMode
+
 	// scroll older qm_cids table and repair
 	for {
 		// abort if context is canceled
@@ -292,7 +340,7 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorQmCID = cid
-			ss.repairCid(ctx, cid, nil, tracker, repairSourceQmCID)
+			ss.repairCidWithCleanupMode(ctx, cid, nil, tracker, repairSourceQmCID, qmCidsCleanupMode)
 		}
 
 		tracker.Duration += time.Since(startIter)
@@ -307,7 +355,18 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 		return nil
 	}
 
-	logger := ss.logger.With(zap.String("task", "repair"), zap.String("cid", cid), zap.Bool("cleanup", tracker.CleanupMode))
+	return ss.repairCidWithCleanupMode(ctx, cid, placementHosts, tracker, source, tracker.CleanupMode)
+}
+
+func (ss *MediorumServer) repairCidWithCleanupMode(
+	ctx context.Context,
+	cid string,
+	placementHosts []string,
+	tracker *RepairTracker,
+	source string,
+	cleanupMode bool,
+) error {
+	logger := ss.logger.With(zap.String("task", "repair"), zap.String("cid", cid), zap.Bool("cleanup", cleanupMode))
 	ss.repairSourceEvidence.recordCall(source)
 
 	preferredHosts, isMine := ss.rendezvousAllHosts(cid)
@@ -326,7 +385,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	}
 
 	// fast path: do zero bucket ops if we know we don't care about this cid
-	if !tracker.CleanupMode && !isMine {
+	if !cleanupMode && !isMine {
 		ss.repairSourceEvidence.recordFastSkipNotMine(source)
 		return nil
 	}
@@ -376,11 +435,11 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 
 	// in cleanup mode do some extra checks:
 	// - validate CID, delete if invalid (doesn't apply to Qm keys because their hash is not the CID)
-	if tracker.CleanupMode && alreadyHave && !cidutil.IsLegacyCID(cid) {
+	if cleanupMode && alreadyHave && !cidutil.IsLegacyCID(cid) {
 		if r, errRead := ss.bucket.NewReader(ctx, key, nil); errRead == nil {
 			errVal := cidutil.ValidateCID(cid, r)
 			errClose := r.Close()
-			if err != nil {
+			if errVal != nil {
 				tracker.Counters["delete_invalid_needed"]++
 				logger.Error("deleting invalid CID", zap.Error(errVal))
 				if errDel := ss.bucket.Delete(ctx, key); errDel == nil {
@@ -404,7 +463,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 
 	// delete derived image variants since they'll be dynamically resized
 	if strings.HasSuffix(cid, ".jpg") && !strings.HasSuffix(cid, "original.jpg") {
-		if tracker.CleanupMode && alreadyHave {
+		if cleanupMode && alreadyHave {
 			err := ss.dropFromMyBucket(cid)
 			if err != nil {
 				logger.Error("delete_resized_image_failed", zap.Error(err))

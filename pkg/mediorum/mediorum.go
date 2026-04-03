@@ -148,10 +148,18 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 	}
 	repairCleanupEvery := 4
 	if rce := os.Getenv("OPENAUDIO_REPAIR_CLEANUP_EVERY"); rce != "" {
-		if parsed, err := strconv.Atoi(rce); err == nil {
+		if parsed, err := strconv.Atoi(rce); err == nil && parsed > 0 {
 			repairCleanupEvery = parsed
 		} else {
 			logger.Warn("failed to parse OPENAUDIO_REPAIR_CLEANUP_EVERY, using default 4", zap.String("value", rce), zap.Error(err))
+		}
+	}
+	repairQmCidsCleanupEvery := 1
+	if rqce := os.Getenv("OPENAUDIO_REPAIR_QM_CIDS_CLEANUP_EVERY"); rqce != "" {
+		if parsed, err := strconv.Atoi(rqce); err == nil && parsed >= 0 {
+			repairQmCidsCleanupEvery = parsed
+		} else {
+			logger.Warn("failed to parse OPENAUDIO_REPAIR_QM_CIDS_CLEANUP_EVERY, using default 1", zap.String("value", rqce), zap.Error(err))
 		}
 	}
 
@@ -184,7 +192,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		RepairInterval:            repairInterval,
 		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
 		RepairCleanupEvery:        repairCleanupEvery,
-		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
+		RepairQmCidsCleanupEvery:  repairQmCidsCleanupEvery,
 	}
 
 	ss, err := server.New(lc, logger, config, posChannel, core, ethService)

@@ -10,13 +10,14 @@ const (
 )
 
 type repairSourceEvidence struct {
-	CallsTotal           uint64 `json:"calls_total"`
-	FastSkipNotMineTotal uint64 `json:"fast_skip_not_mine_total"`
-	CycleTotal           uint64 `json:"cycle_total"`
-	CycleUnique          uint64 `json:"cycle_unique"`
-	CycleDuplicate       uint64 `json:"cycle_duplicate"`
-	AttrCallsTotal       uint64 `json:"attr_calls_total"`
-	PullMineNeededTotal  uint64 `json:"pull_mine_needed_total"`
+	CallsTotal            uint64 `json:"calls_total"`
+	FastSkipNotMineTotal  uint64 `json:"fast_skip_not_mine_total"`
+	CycleTotal            uint64 `json:"cycle_total"`
+	CycleUnique           uint64 `json:"cycle_unique"`
+	CycleDuplicate        uint64 `json:"cycle_duplicate"`
+	KnownPresentHitsTotal uint64 `json:"known_present_hits_total"`
+	AttrCallsTotal        uint64 `json:"attr_calls_total"`
+	PullMineNeededTotal   uint64 `json:"pull_mine_needed_total"`
 }
 
 type repairSourceEvidenceTracker struct {
@@ -66,6 +67,12 @@ func (t *repairSourceEvidenceTracker) recordCycle(source string, duplicate bool)
 		return
 	}
 	state.CycleUnique++
+}
+
+func (t *repairSourceEvidenceTracker) recordKnownPresentHit(source string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.sourceState(source).KnownPresentHitsTotal++
 }
 
 func (t *repairSourceEvidenceTracker) recordAttrCall(source string) {
