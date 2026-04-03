@@ -162,6 +162,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 			logger.Warn("failed to parse OPENAUDIO_REPAIR_QM_CIDS_CLEANUP_EVERY, using default 1", zap.String("value", rqce), zap.Error(err))
 		}
 	}
+	repairQmCidsUseListIndex := getenvWithDefault("OPENAUDIO_REPAIR_QM_CIDS_USE_LIST_INDEX", "false") == "true"
 
 	config := server.MediorumConfig{
 		Self: registrar.Peer{
@@ -193,6 +194,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
 		RepairCleanupEvery:        repairCleanupEvery,
 		RepairQmCidsCleanupEvery:  repairQmCidsCleanupEvery,
+		RepairQmCidsUseListIndex:  repairQmCidsUseListIndex,
 	}
 
 	ss, err := server.New(lc, logger, config, posChannel, core, ethService)

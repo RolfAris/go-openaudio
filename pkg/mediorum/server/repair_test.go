@@ -221,3 +221,51 @@ func TestRepairCidWithCleanupOverrideSkipsNotMineFastPath(t *testing.T) {
 	snapshot := ss.repairSourceEvidence.snapshot()
 	assert.Positive(t, snapshot[repairSourceQmCID].FastSkipNotMineTotal)
 }
+
+func TestBuildRepairPresenceIndexIncludesLocalBlob(t *testing.T) {
+	ctx := context.Background()
+	ss := testNetwork[0]
+
+	data := []byte("presence-index-local-blob")
+	cid, err := cidutil.ComputeFileCID(bytes.NewReader(data))
+	assert.NoError(t, err)
+	assert.NoError(t, ss.replicateToMyBucket(ctx, cid, bytes.NewReader(data)))
+
+	index, err := ss.buildRepairPresenceIndex(ctx)
+	assert.NoError(t, err)
+
+	entry, ok := index.Lookup(cidutil.ShardCID(cid))
+	assert.True(t, ok)
+	assert.Equal(t, int64(len(data)), entry.Size)
+}
+
+func TestRepairCidWithPresenceIndexUsesListedState(t *testing.T) {
+	ctx := context.Background()
+	ss := testNetwork[0]
+
+	data := []byte("presence-index-repair-path")
+	cid, err := cidutil.ComputeFileCID(bytes.NewReader(data))
+	assert.NoError(t, err)
+	assert.NoError(t, ss.replicateToMyBucket(ctx, cid, bytes.NewReader(data)))
+
+	index, err := ss.buildRepairPresenceIndex(ctx)
+	assert.NoError(t, err)
+
+	assert.NoError(t, ss.dropFromMyBucket(cid))
+
+	before := ss.repairSourceEvidence.snapshot()[repairSourceQmCID].AttrCallsTotal
+	tracker := &RepairTracker{
+		StartedAt:         time.Now(),
+		CleanupMode:       true,
+		QmCidsCleanupMode: true,
+		Counters:          map[string]int{},
+	}
+
+	assert.NoError(t, ss.repairCidWithPresenceIndex(ctx, cid, []string{ss.Config.Self.Host}, tracker, repairSourceQmCID, false, index))
+	assert.Equal(t, 1, tracker.Counters["already_have"])
+	assert.Equal(t, 1, tracker.Counters["qm_cids_list_index_lookup"])
+	assert.Equal(t, 1, tracker.Counters["qm_cids_list_index_present"])
+
+	after := ss.repairSourceEvidence.snapshot()[repairSourceQmCID].AttrCallsTotal
+	assert.Equal(t, before, after)
+}
