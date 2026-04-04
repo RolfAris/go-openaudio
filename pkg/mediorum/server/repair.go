@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/OpenAudio/go-openaudio/pkg/mediorum/cidutil"
+	"github.com/erni27/imcache"
 	"go.uber.org/zap"
 
 	"github.com/georgysavva/scany/v2/pgxscan"
@@ -92,6 +93,12 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 					logger.Error("failed to get last repair.go run", zap.Error(err))
 				}
 			}
+			// Cleanup cycles do full verification, so clear the cross-cycle
+			// presence cache to force fresh Attributes calls.
+			if tracker.CleanupMode {
+				ss.knownPresent.RemoveAll()
+			}
+
 			logger := logger.With(zap.Int("run", tracker.CursorI), zap.Bool("cleanupMode", tracker.CleanupMode))
 
 			saveTracker := func() {
@@ -134,7 +141,7 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 				logger.Warn("repair interrupted", zap.Error(err), zap.Duration("took", tracker.Duration))
 			} else {
 				tracker.FinishedAt = time.Now()
-				logger.Info("repair OK", zap.Duration("took", tracker.Duration))
+				logger.Info("repair OK", zap.Duration("took", tracker.Duration), zap.Int("known_present_size", ss.knownPresent.Len()))
 				ss.lastSuccessfulRepair = tracker
 				if tracker.CleanupMode {
 					ss.lastSuccessfulCleanup = tracker
@@ -339,6 +346,19 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 		return nil
 	}
 
+	// Cross-cycle cache: skip Attributes for CIDs confirmed present in a
+	// previous cycle. Cleanup cycles bypass the cache because they need
+	// ModTime for over-replication decisions and run full blob validation.
+	if !tracker.CleanupMode {
+		if size, ok := ss.knownPresent.Get(key); ok {
+			tracker.SeenKeys[key] = seenKeyResult{alreadyHave: true, size: size}
+			tracker.Counters["already_have"]++
+			tracker.Counters["repair_known_present"]++
+			tracker.ContentSize += size
+			return nil
+		}
+	}
+
 	alreadyHave := true
 	attrs := &blob.Attributes{}
 	attrs, err := ss.bucket.Attributes(ctx, key)
@@ -374,6 +394,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 				if errDel := ss.bucket.Delete(ctx, key); errDel == nil {
 					tracker.Counters["delete_invalid_success"]++
 					tracker.SeenKeys[key] = seenKeyResult{alreadyHave: false, size: 0}
+					ss.knownPresent.Remove(key)
 				} else {
 					tracker.Counters["delete_invalid_fail"]++
 					logger.Error("failed to delete invalid CID", zap.Error(errDel))
@@ -406,6 +427,9 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	}
 
 	if alreadyHave {
+		// Populate cross-cycle cache after all validation and cleanup has passed,
+		// so that corrupt or about-to-be-deleted blobs are never cached.
+		ss.knownPresent.Set(key, attrs.Size, imcache.WithNoExpiration())
 		tracker.Counters["already_have"]++
 		tracker.ContentSize += attrs.Size
 	}
