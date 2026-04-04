@@ -195,14 +195,14 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorUploadID = u.ID
-			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker)
+			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker, nil)
 			// images are resized dynamically
 			// so only consider audio TranscodeResults for repair
 			if u.Template != JobTemplateAudio {
 				continue
 			}
 			for _, cid := range u.TranscodeResults {
-				ss.repairCid(ctx, cid, u.PlacementHosts, tracker)
+				ss.repairCid(ctx, cid, u.PlacementHosts, tracker, nil)
 			}
 		}
 
@@ -242,11 +242,31 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorPreviewCID = u.CID
-			ss.repairCid(ctx, u.CID, nil, tracker)
+			ss.repairCid(ctx, u.CID, nil, tracker, nil)
 		}
 
 		tracker.Duration += time.Since(startIter)
 		saveTracker()
+	}
+
+	// optionally build a presence index from bucket.List to avoid per-key
+	// HeadObject calls during qm_cids cleanup. This replaces millions of
+	// HeadObject calls with a single ListObjects pagination.
+	var presenceIndex *repairPresenceIndex
+	if tracker.CleanupMode && ss.Config.RepairQmCidsUseListIndex {
+		ss.logger.Info("building qm_cids presence index from bucket listing")
+		indexStart := time.Now()
+		idx, err := ss.buildRepairPresenceIndex(ctx)
+		if err != nil {
+			ss.logger.Warn("failed to build presence index; falling back to per-key attrs", zap.Error(err))
+			tracker.Counters["qm_cids_list_index_build_fail"]++
+		} else {
+			presenceIndex = idx
+			tracker.Counters["qm_cids_list_index_entries"] = len(idx.entries)
+			ss.logger.Info("presence index built",
+				zap.Int("entries", len(idx.entries)),
+				zap.Duration("took", time.Since(indexStart)))
+		}
 	}
 
 	// scroll older qm_cids table and repair
@@ -288,7 +308,7 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorQmCID = cid
-			ss.repairCid(ctx, cid, nil, tracker)
+			ss.repairCid(ctx, cid, nil, tracker, presenceIndex)
 		}
 
 		tracker.Duration += time.Since(startIter)
@@ -298,7 +318,7 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 	return ctx.Err()
 }
 
-func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHosts []string, tracker *RepairTracker) error {
+func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHosts []string, tracker *RepairTracker, presenceIndex *repairPresenceIndex) error {
 	if cid == "" {
 		return nil
 	}
@@ -359,19 +379,32 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 		}
 	}
 
-	alreadyHave := true
+	// Resolve blob presence: use the presence index (from bucket.List) if
+	// available, otherwise fall back to per-key HeadObject.
+	alreadyHave := false
 	attrs := &blob.Attributes{}
-	attrs, err := ss.bucket.Attributes(ctx, key)
-	if err != nil {
-		if gcerrors.Code(err) == gcerrors.NotFound || strings.Contains(err.Error(), "notFound") {
-			attrs = &blob.Attributes{}
-			alreadyHave = false
+	if presenceIndex != nil {
+		if entry, ok := presenceIndex.Lookup(key); ok {
+			alreadyHave = true
+			attrs.Size = entry.Size
+			attrs.ModTime = entry.ModTime
+			tracker.Counters["qm_cids_list_index_hit"]++
 		} else {
-			tracker.Counters["read_attrs_fail"]++
-			logger.Error("exist check failed", zap.Error(err))
-			// Log the error but continue with repair (treat as not found)
-			attrs = &blob.Attributes{}
-			alreadyHave = false
+			tracker.Counters["qm_cids_list_index_miss"]++
+		}
+	} else {
+		var err error
+		attrs, err = ss.bucket.Attributes(ctx, key)
+		if err != nil {
+			if gcerrors.Code(err) == gcerrors.NotFound || strings.Contains(err.Error(), "notFound") {
+				attrs = &blob.Attributes{}
+			} else {
+				tracker.Counters["read_attrs_fail"]++
+				logger.Error("exist check failed", zap.Error(err))
+				attrs = &blob.Attributes{}
+			}
+		} else {
+			alreadyHave = true
 		}
 	}
 
@@ -488,7 +521,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	if !isPlaced && !ss.Config.StoreAll && tracker.CleanupMode && alreadyHave && myRank > rankThreshold && !wasReplicatedThisWeek {
 		// if i'm the first node that over-replicated, keep the file for a week as a buffer since a node ahead of me in the preferred order will likely be down temporarily at some point
 		tracker.Counters["delete_over_replicated_needed"]++
-		err = ss.dropFromMyBucket(cid)
+		err := ss.dropFromMyBucket(cid)
 		if err != nil {
 			tracker.Counters["delete_over_replicated_fail"]++
 			logger.Error("delete failed", zap.Error(err))
