@@ -382,19 +382,24 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 	// - validate CID, delete if invalid (doesn't apply to Qm keys because their hash is not the CID)
 	if tracker.CleanupMode && alreadyHave && !cidutil.IsLegacyCID(cid) {
 		if r, errRead := ss.bucket.NewReader(ctx, key, nil); errRead == nil {
-			errVal := cidutil.ValidateCID(cid, r)
+			computed, errCompute := cidutil.ComputeFileCID(r)
 			errClose := r.Close()
-			if err != nil {
+			if errCompute != nil {
+				// Read/hash error — blob may be fine, skip rather than delete
+				tracker.Counters["validate_read_fail"]++
+				logger.Warn("CID validation skipped (read error)", zap.Error(errCompute))
+			} else if computed != cid {
 				tracker.Counters["delete_invalid_needed"]++
-				logger.Error("deleting invalid CID", zap.Error(errVal))
+				logger.Error("deleting invalid CID", zap.String("expected", cid), zap.String("computed", computed))
 				if errDel := ss.bucket.Delete(ctx, key); errDel == nil {
 					tracker.Counters["delete_invalid_success"]++
+					tracker.SeenKeys[key] = seenKeyResult{alreadyHave: false, size: 0}
 					ss.knownPresent.Remove(key)
 				} else {
 					tracker.Counters["delete_invalid_fail"]++
 					logger.Error("failed to delete invalid CID", zap.Error(errDel))
 				}
-				return err
+				return nil
 			}
 
 			if errClose != nil {
@@ -449,7 +454,7 @@ func (ss *MediorumServer) repairCid(ctx context.Context, cid string, placementHo
 				success = true
 
 				pulledAttrs, errAttrs := ss.bucket.Attributes(ctx, key)
-				if errAttrs != nil {
+				if errAttrs == nil {
 					tracker.ContentSize += pulledAttrs.Size
 				}
 				return nil
