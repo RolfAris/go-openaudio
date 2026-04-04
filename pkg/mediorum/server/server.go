@@ -49,6 +49,7 @@ import (
 type trackAccessInfo struct {
 	TrackID            string
 	ManagementKeyCount int
+	DurationSeconds    float64 // track duration in seconds (from FFProbe); 0 means unknown
 }
 
 type MediorumConfig struct {
@@ -79,12 +80,14 @@ type MediorumConfig struct {
 	RepairInterval            time.Duration `default:"1h"`
 
 	ProgrammableDistributionEnabled bool
+	BlobStorageStreaming             bool
 
 	// should have a basedir type of thing
 	// by default will put db + blobs there
 
 	privateKey *ecdsa.PrivateKey
 }
+
 
 type MediorumServer struct {
 	lc               *lifecycle.Lifecycle
@@ -129,6 +132,7 @@ type MediorumServer struct {
 	imageCache            *imcache.Cache[string, []byte]
 	trackAccessInfoCache  *imcache.Cache[string, trackAccessInfo]
 	attrCache             *imcache.Cache[string, *blob.Attributes]
+	knownPresent          *imcache.Cache[string, int64]
 	failsPeerReachability bool
 
 	StartedAt time.Time
@@ -370,9 +374,10 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 		imageCache:           imcache.New(imcache.WithMaxEntriesLimitOption[string, []byte](10_000, imcache.EvictionPolicyLRU)),
 		trackAccessInfoCache: imcache.New(imcache.WithMaxEntriesLimitOption[string, trackAccessInfo](50_000, imcache.EvictionPolicyLRU), imcache.WithDefaultExpirationOption[string, trackAccessInfo](5*time.Minute)),
 		attrCache:            imcache.New(imcache.WithMaxEntriesLimitOption[string, *blob.Attributes](10_000, imcache.EvictionPolicyLRU)),
+		knownPresent:         imcache.New(imcache.WithMaxEntriesLimitOption[string, int64](500_000, imcache.EvictionPolicyLRU)),
 
-		StartedAt:    time.Now().UTC(),
-		Config:       config,
+		StartedAt: time.Now().UTC(),
+		Config:    config,
 		geoIPdbReady: make(chan struct{}),
 
 		core: core,
