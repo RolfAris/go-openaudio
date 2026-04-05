@@ -365,9 +365,12 @@ func (ss *MediorumServer) findNodeToServeBlob(_ context.Context, key string) str
 		}
 	}
 
-	// try hosts to find blob
+	// try hosts to find blob, skipping those whose bloom filter says absent
 	hosts, _ := ss.rendezvousAllHosts(key)
 	for _, h := range hosts {
+		if ss.Config.PeerPresenceFilter && !ss.peerMayHaveBlob(h, key) {
+			continue
+		}
 		if ss.hostHasBlob(h, key) {
 			ss.redirectCache.Set(key, h, imcache.WithDefaultExpiration())
 			return h

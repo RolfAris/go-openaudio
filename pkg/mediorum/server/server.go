@@ -79,6 +79,7 @@ type MediorumConfig struct {
 	RepairEnabled              bool          `default:"true"`
 	RepairInterval             time.Duration `default:"1h"`
 	RepairQmCidsUseListIndex   bool
+	PeerPresenceFilter         bool
 
 	ProgrammableDistributionEnabled bool
 	BlobStorageStreaming             bool
@@ -127,6 +128,9 @@ type MediorumServer struct {
 
 	peerHealthsMutex      sync.RWMutex
 	peerHealths           map[string]*PeerHealth
+	peerFiltersMutex      sync.RWMutex
+	peerFilters           map[string]*peerPresenceFilter
+	localPresenceFilter   *peerPresenceFilter
 	unreachablePeers      []string
 	redirectCache         *imcache.Cache[string, string]
 	uploadOrigCidCache    *imcache.Cache[string, string]
@@ -370,6 +374,7 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 		posChannel:       posChannel,
 
 		peerHealths:          map[string]*PeerHealth{},
+		peerFilters:          map[string]*peerPresenceFilter{},
 		redirectCache:        imcache.New(imcache.WithMaxEntriesLimitOption[string, string](50_000, imcache.EvictionPolicyLRU)),
 		uploadOrigCidCache:   imcache.New(imcache.WithMaxEntriesLimitOption[string, string](50_000, imcache.EvictionPolicyLRU)),
 		imageCache:           imcache.New(imcache.WithMaxEntriesLimitOption[string, []byte](10_000, imcache.EvictionPolicyLRU)),
@@ -475,6 +480,7 @@ func New(lc *lifecycle.Lifecycle, logger *zap.Logger, config MediorumConfig, pos
 
 	internalApi.GET("/blobs/location/:cid", ss.serveBlobLocation, cidutil.UnescapeCidParam)
 	internalApi.GET("/blobs/info/:cid", ss.serveBlobInfo, cidutil.UnescapeCidParam)
+	internalApi.GET("/presence-filter", ss.servePresenceFilter)
 
 	// internal: blobs between peers
 	internalApi.GET("/blobs/:cid", ss.serveInternalBlobGET, cidutil.UnescapeCidParam, middleware.BasicAuth(ss.checkBasicAuth))
@@ -571,6 +577,9 @@ func (ss *MediorumServer) MustStart() error {
 		ss.crud.StartClients()
 
 		ss.lc.AddManagedRoutine("health poller", ss.startHealthPoller)
+		if ss.Config.PeerPresenceFilter {
+			ss.lc.AddManagedRoutine("presence filter poller", ss.startPresenceFilterPoller)
+		}
 		ss.lc.AddManagedRoutine("repairer", ss.startRepairer)
 		ss.lc.AddManagedRoutine("qm syncer", ss.startQmSyncer)
 		ss.lc.AddManagedRoutine("delist status poller", ss.startPollingDelistStatuses)

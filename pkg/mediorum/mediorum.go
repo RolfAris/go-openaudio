@@ -147,6 +147,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		}
 	}
 	repairQmCidsUseListIndex := os.Getenv("OPENAUDIO_REPAIR_QM_CIDS_USE_LIST_INDEX") == "true"
+	peerPresenceFilter := os.Getenv("OPENAUDIO_PEER_PRESENCE_FILTER") == "true"
 
 	config := server.MediorumConfig{
 		Self: registrar.Peer{
@@ -176,6 +177,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		RepairEnabled:            repairEnabled,
 		RepairInterval:           repairInterval,
 		RepairQmCidsUseListIndex: repairQmCidsUseListIndex,
+		PeerPresenceFilter:       peerPresenceFilter,
 		BlobStorageStreaming:      os.Getenv("OPENAUDIO_BLOB_STORAGE_STREAMING") == "true",
 	}
 

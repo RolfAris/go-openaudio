@@ -266,6 +266,9 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			ss.logger.Info("presence index built",
 				zap.Int("entries", len(idx.entries)),
 				zap.Duration("took", time.Since(indexStart)))
+			if ss.Config.PeerPresenceFilter {
+				ss.buildLocalPresenceFilter(idx)
+			}
 		}
 	}
 

@@ -41,6 +41,7 @@ require (
 	github.com/Oudwins/tailwind-merge-go v0.2.1
 	github.com/axiomhq/axiom-go v0.23.0
 	github.com/bdragon300/tusgo v0.1.2
+	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/cockroachdb/pebble v1.1.2
 	github.com/cometbft/cometbft-db v1.0.1
 	github.com/cometbft/cometbft/api v1.0.0
@@ -105,7 +106,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17 // indirect
 	github.com/aws/smithy-go v1.22.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.13.0 // indirect
+	github.com/bits-and-blooms/bitset v1.24.2 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
