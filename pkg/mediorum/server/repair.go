@@ -162,6 +162,23 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 		}
 	}
 
+	// Build a presence index from bucket listing to avoid per-key HeadObject.
+	// Replaces hundreds of thousands of HeadObject calls with one ListObjects pagination.
+	var presenceIndex *repairPresenceIndex
+	ss.logger.Info("building repair presence index from bucket listing")
+	indexStart := time.Now()
+	idx, err := ss.buildRepairPresenceIndex(ctx)
+	if err != nil {
+		ss.logger.Warn("failed to build presence index; falling back to per-key attrs", zap.Error(err))
+		tracker.Counters["qm_cids_list_index_build_fail"]++
+	} else {
+		presenceIndex = idx
+		tracker.Counters["qm_cids_list_index_entries"] = len(idx.entries)
+		ss.logger.Info("presence index built",
+			zap.Int("entries", len(idx.entries)),
+			zap.Duration("took", time.Since(indexStart)))
+	}
+
 	// scroll uploads and repair CIDs
 	// (later this can clean up "derivative" images if we make image resizing dynamic)
 	for {
@@ -195,14 +212,14 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorUploadID = u.ID
-			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker, nil)
+			ss.repairCid(ctx, u.OrigFileCID, u.PlacementHosts, tracker, presenceIndex)
 			// images are resized dynamically
 			// so only consider audio TranscodeResults for repair
 			if u.Template != JobTemplateAudio {
 				continue
 			}
 			for _, cid := range u.TranscodeResults {
-				ss.repairCid(ctx, cid, u.PlacementHosts, tracker, nil)
+				ss.repairCid(ctx, cid, u.PlacementHosts, tracker, presenceIndex)
 			}
 		}
 
@@ -242,31 +259,11 @@ func (ss *MediorumServer) runRepair(ctx context.Context, tracker *RepairTracker)
 			}
 
 			tracker.CursorPreviewCID = u.CID
-			ss.repairCid(ctx, u.CID, nil, tracker, nil)
+			ss.repairCid(ctx, u.CID, nil, tracker, presenceIndex)
 		}
 
 		tracker.Duration += time.Since(startIter)
 		saveTracker()
-	}
-
-	// optionally build a presence index from bucket.List to avoid per-key
-	// HeadObject calls during qm_cids cleanup. This replaces millions of
-	// HeadObject calls with a single ListObjects pagination.
-	var presenceIndex *repairPresenceIndex
-	if tracker.CleanupMode && ss.Config.RepairQmCidsUseListIndex {
-		ss.logger.Info("building qm_cids presence index from bucket listing")
-		indexStart := time.Now()
-		idx, err := ss.buildRepairPresenceIndex(ctx)
-		if err != nil {
-			ss.logger.Warn("failed to build presence index; falling back to per-key attrs", zap.Error(err))
-			tracker.Counters["qm_cids_list_index_build_fail"]++
-		} else {
-			presenceIndex = idx
-			tracker.Counters["qm_cids_list_index_entries"] = len(idx.entries)
-			ss.logger.Info("presence index built",
-				zap.Int("entries", len(idx.entries)),
-				zap.Duration("took", time.Since(indexStart)))
-		}
 	}
 
 	// scroll older qm_cids table and repair
