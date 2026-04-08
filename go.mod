@@ -86,7 +86,7 @@ require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/aws/aws-sdk-go v1.55.5 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.29.12 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.65 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.30 // indirect
@@ -103,7 +103,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.25.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.30.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.33.17 // indirect
-	github.com/aws/smithy-go v1.22.3 // indirect
+	github.com/aws/smithy-go v1.24.2 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.13.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4 // indirect
