@@ -23,6 +23,24 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Require dependency-only file changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq '.files[].path')
+          if [ -z "$files" ]; then
+            echo "No changed files found on PR"
+            exit 1
+          fi
+          invalid=$(printf '%s\n' "$files" | grep -Ev '^((.+/)?(package\.json|package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|pyproject\.toml|uv\.lock|poetry\.lock|requirements([._-][^/]+)?\.txt|Pipfile|Pipfile\.lock|Gemfile|Gemfile\.lock|go\.mod|go\.sum|Cargo\.toml|Cargo\.lock|composer\.json|composer\.lock)|\.github/workflows/[^/]+\.(yml|yaml)|\.github/dependabot\.yml)$' || true)
+          if [ -n "$invalid" ]; then
+            echo "Refusing automerge because PR changes non-dependency files:"
+            printf '%s\n' "$invalid"
+            exit 1
+          fi
+
       - name: Require successful CI workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
