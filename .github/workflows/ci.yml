@@ -15,6 +15,23 @@ jobs:
       push: true
     secrets: inherit
 
+  verify-explorer-assets:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pkg/explorer/assets
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: pkg/explorer/assets/package-lock.json
+
+      - run: npm ci
+      - run: npx postcss input.css -o /tmp/explorer-output.css --minify
+
   tag-edge:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build-test-push

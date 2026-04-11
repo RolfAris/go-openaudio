@@ -23,6 +23,45 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Require successful CI workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REQUIRED_WORKFLOW: CI
+        run: |
+          for attempt in $(seq 1 60); do
+            status=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=pull_request&per_page=100" --jq \
+              --arg workflow "$REQUIRED_WORKFLOW" '
+                [.workflow_runs[] | select(.name == $workflow)]
+                | sort_by(.run_number)
+                | last
+                | if . == null then "missing"
+                  elif .status != "completed" then .status
+                  else .conclusion
+                  end
+              ')
+            case "$status" in
+              success)
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|stale|startup_failure)
+                echo "Required workflow $REQUIRED_WORKFLOW concluded with $status"
+                exit 1
+                ;;
+              skipped)
+                echo "Required workflow $REQUIRED_WORKFLOW was skipped"
+                exit 1
+                ;;
+              *)
+                echo "Waiting for $REQUIRED_WORKFLOW workflow: $status (attempt $attempt/60)"
+                sleep 10
+                ;;
+            esac
+          done
+          echo "Timed out waiting for $REQUIRED_WORKFLOW workflow"
+          exit 1
+
       - name: Enable auto-merge for patch and minor updates
         if: |
           steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
