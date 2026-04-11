@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/pkg/explorer/assets"
+    schedule:
+      interval: "daily"
+      time: "03:00"
+      timezone: "Asia/Bangkok"
+    open-pull-requests-limit: 20
+    labels:
+      - "dependencies"
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "deps"
+    groups:
+      patch-and-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+          - "minor"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "03:00"
+      timezone: "Asia/Bangkok"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "deps"
+    groups:
+      patch-and-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+          - "minor"
