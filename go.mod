@@ -1,6 +1,6 @@
 module github.com/OpenAudio/go-openaudio
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/OpenAudio/go-openaudio/etl v0.0.0
@@ -15,7 +15,7 @@ require (
 	github.com/gowebpki/jcs v1.0.0
 	github.com/imroc/req/v3 v3.42.0
 	github.com/ipfs/go-cid v0.4.1
-	github.com/jackc/pgx/v5 v5.6.0
+	github.com/jackc/pgx/v5 v5.9.0
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/oklog/ulid/v2 v2.1.0
@@ -24,11 +24,11 @@ require (
 	github.com/speps/go-hashids/v2 v2.0.1
 	github.com/spf13/cast v1.7.0
 	github.com/storyicon/sigverify v1.1.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	go.etcd.io/bbolt v1.4.0-alpha.0.0.20240404170359-43604f3112c5
 	gocloud.dev v0.40.0
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
-	golang.org/x/sync v0.14.0
+	golang.org/x/sync v0.17.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
 	gorm.io/driver/postgres v1.5.0
@@ -56,8 +56,8 @@ require (
 	github.com/shirou/gopsutil/v4 v4.25.1
 	github.com/tus/tusd/v2 v2.8.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.38.0
-	golang.org/x/mod v0.24.0
+	golang.org/x/crypto v0.41.0
+	golang.org/x/mod v0.27.0
 	modernc.org/sqlite v1.38.0
 )
 
@@ -167,7 +167,7 @@ require (
 	github.com/holiman/uint256 v1.3.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.1 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
@@ -231,9 +231,9 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/image v0.20.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
-	golang.org/x/tools v0.33.0 // indirect
+	golang.org/x/tools v0.36.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/api v0.224.0 // indirect
 	google.golang.org/genproto v0.0.0-20250303144028-a0af3efb3deb // indirect
@@ -257,8 +257,8 @@ require (
 	github.com/multiformats/go-varint v0.0.6 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	go.akshayshah.org/connectproto v0.6.0
-	golang.org/x/net v0.40.0
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/net v0.43.0
+	golang.org/x/sys v0.35.0 // indirect
 	lukechampine.com/blake3 v1.1.6 // indirect
 )
 
