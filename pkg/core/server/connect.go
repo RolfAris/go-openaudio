@@ -1765,6 +1765,46 @@ func (c *CoreService) GetRewardSenderAttestation(ctx context.Context, req *conne
 	}), nil
 }
 
+// GetDeleteRewardSenderAttestation implements v1connect.CoreServiceHandler.
+func (c *CoreService) GetDeleteRewardSenderAttestation(ctx context.Context, req *connect.Request[v1.GetDeleteRewardSenderAttestationRequest]) (*connect.Response[v1.GetDeleteRewardSenderAttestationResponse], error) {
+	address := req.Msg.Address
+	if address == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address is required"))
+	}
+
+	rewardsManagerPubkey := req.Msg.RewardsManagerPubkey
+	if rewardsManagerPubkey == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward manager pubkey is required"))
+	}
+
+	validators, err := c.core.db.GetAllEthAddressesOfRegisteredNodes(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error finding validators: %w", err))
+	}
+
+	isValidator := slices.ContainsFunc(validators, func(validator string) bool {
+		return strings.EqualFold(validator, address)
+	})
+
+	if isValidator {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address is a validator"))
+	}
+
+	owner, attestation, err := rewards.GetDeleteSenderAttestation(c.core.config.EthereumKey, &rewards.DeleteSenderAttestationParams{
+		SenderAddress:               address,
+		RewardsManagerAccountPubKey: rewardsManagerPubkey,
+	})
+
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("could not create attestation"))
+	}
+
+	return connect.NewResponse(&v1.GetDeleteRewardSenderAttestationResponse{
+		Owner:       owner,
+		Attestation: attestation,
+	}), nil
+}
+
 func ReadyCheckInterceptor(c *CoreService) connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
