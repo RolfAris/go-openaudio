@@ -44,6 +44,10 @@ func (ss *MediorumServer) writeQmFile() error {
 	// doit
 	_, err = conn.Conn().PgConn().CopyTo(ctx, blobWriter, "COPY qm_cids TO STDOUT")
 	if err != nil {
+		// Best-effort close so the s3blob driver issues
+		// AbortMultipartUpload on errored writes; without this, B2
+		// b2_start_large_file calls leak as stuck uploads.
+		blobWriter.Close()
 		return bail(err)
 	}
 
