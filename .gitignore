@@ -20,3 +20,4 @@ package-lock.json
 openaudio
 programmable-distribution
 /etl
+_candidate_image_artifacts/

@@ -108,10 +108,8 @@ func (ss *MediorumServer) replicateToMyBucket(ctx context.Context, fileName stri
 
 	n, err := io.Copy(w, file)
 	if err != nil {
-		// Best-effort close so the s3blob driver issues
-		// AbortMultipartUpload on errored writes; without this, B2
-		// b2_start_large_file calls leak as stuck uploads.
-		w.Close()
+		// Close on error so s3blob aborts the multipart upload (B2 leaks b2_start_large_file otherwise).
+		_ = w.Close()
 		return err
 	}
 

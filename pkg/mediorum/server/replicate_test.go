@@ -31,11 +31,18 @@ func (r *errAfterNReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// TestReplicateToMyBucket_AbortsOnMidStreamError guards against a regression
-// where an io.Copy error in replicateToMyBucket abandons the writer without
-// calling Close(). Without the explicit Close on the error path the s3blob
-// driver never issues AbortMultipartUpload, and on Backblaze B2 the
-// b2_start_large_file call leaks as a stuck upload.
+// TestReplicateToMyBucket_AbortsOnMidStreamError exercises the io.Copy
+// error path in replicateToMyBucket. It asserts the error propagates and
+// that no partial blob is committed.
+//
+// On the test fixture's fileblob backend an abandoned Writer leaves no
+// committed blob whether or not Close() is called, so this test alone
+// cannot prove Close() ran. The fix's real value is on the s3blob
+// driver, where Close() after a write error issues AbortMultipartUpload
+// — without that call B2's b2_start_large_file leaks as a stuck upload.
+// End-to-end verification is via fleet-side B2 stuck-upload counts; this
+// test guards the behavior contract (error propagates cleanly, no
+// partial commit) so the call-site shape doesn't regress.
 func TestReplicateToMyBucket_AbortsOnMidStreamError(t *testing.T) {
 	ctx := context.Background()
 	ss := testNetwork[0]
