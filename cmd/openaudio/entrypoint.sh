@@ -95,6 +95,13 @@ setup_postgres() {
         # Stop PostgreSQL to restart it properly
         su - postgres -c "$PG_BIN/pg_ctl -D $POSTGRES_DATA_DIR stop"
     fi
+
+    # Apply memory/WAL defaults sized to detected host RAM. The shim
+    # exits 0 on every failure path and leaves stock defaults in place.
+    # Operators can disable with AUDIUSD_DISABLE_AUTO_TUNE=1 or override
+    # specific settings via conf.d/99-*.conf or ALTER SYSTEM.
+    /bin/postgres-auto-tune.sh "$POSTGRES_DATA_DIR"
+
     echo "Starting PostgreSQL service..."
     # Ensure locale is set when starting PostgreSQL
     su - postgres -c "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 $PG_BIN/pg_ctl -D $POSTGRES_DATA_DIR start"

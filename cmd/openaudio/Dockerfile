@@ -32,7 +32,8 @@ RUN mkdir -p /env
 COPY ./cmd/openaudio/env/* /env/
 
 COPY ./cmd/openaudio/entrypoint.sh /bin/entrypoint.sh
-RUN chmod +x /bin/entrypoint.sh
+COPY ./cmd/openaudio/postgres-auto-tune.sh /bin/postgres-auto-tune.sh
+RUN chmod +x /bin/entrypoint.sh /bin/postgres-auto-tune.sh
 
 ARG GIT_SHA
 ENV GIT_SHA=$GIT_SHA
