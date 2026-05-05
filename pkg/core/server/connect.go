@@ -1059,102 +1059,12 @@ func (c *CoreService) GetStatus(ctx context.Context, _ *connect.Request[v1.GetSt
 }
 
 // GetRewardAttestation implements v1connect.CoreServiceHandler.
+//
+// TODO: temporarily disabled. Restore the programmatic-reward attestation
+// flow (see git history for the previous implementation) once artist-coin
+// attestations are ready to be re-enabled.
 func (c *CoreService) GetRewardAttestation(ctx context.Context, req *connect.Request[v1.GetRewardAttestationRequest]) (*connect.Response[v1.GetRewardAttestationResponse], error) {
-	ethRecipientAddress := req.Msg.EthRecipientAddress
-	if ethRecipientAddress == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("eth_recipient_address is required"))
-	}
-
-	// Only support programmatic rewards via reward_address
-	rewardAddress := req.Msg.RewardAddress
-	if rewardAddress == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward_address is required"))
-	}
-
-	specifier := req.Msg.Specifier
-	if specifier == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("specifier is required"))
-	}
-	if len(specifier) > 256 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("specifier too long"))
-	}
-	claimAuthority := req.Msg.ClaimAuthority
-	if claimAuthority == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("claim_authority is required"))
-	}
-	signature := req.Msg.Signature
-	if signature == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("signature is required"))
-	}
-	amount := req.Msg.Amount
-	if amount == 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("amount is required"))
-	}
-	rewardId := req.Msg.RewardId
-	if rewardId == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward_id is required"))
-	}
-	if req.Msg.AmountDecimals > 18 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("amount_decimals too large; max 18"))
-	}
-
-	// Get programmatic reward by deployed address
-	dbReward, err := c.core.db.GetReward(ctx, rewardAddress)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("programmatic reward not found"))
-	}
-
-	// Convert DB reward to rewards package format
-	claimAuthorities := make([]rewards.ClaimAuthority, len(dbReward.ClaimAuthorities))
-	for i, ca := range dbReward.ClaimAuthorities {
-		claimAuthorities[i] = rewards.ClaimAuthority{
-			Address: ca,
-			Name:    "", // Name not stored in DB
-		}
-	}
-
-	reward := rewards.Reward{
-		ClaimAuthorities: claimAuthorities,
-		Amount:           uint64(dbReward.Amount),
-		RewardId:         dbReward.RewardID,
-		Name:             dbReward.Name,
-	}
-
-	// Create claim for validation (without RewardAddress to maintain backward compatibility)
-	claim := rewards.RewardClaim{
-		RecipientEthAddress: ethRecipientAddress,
-		Amount:              amount,
-		RewardID:            req.Msg.RewardId,
-		Specifier:           specifier,
-		ClaimAuthority:      claimAuthority, // Using claimAuthority as oracle for programmatic rewards
-		Decimals:            req.Msg.AmountDecimals,
-	}
-
-	// Create a temporary RewardAttester for validation
-	attester := rewards.NewRewardAttester(c.core.config.EthereumKey, []rewards.Reward{reward})
-
-	// Validate the claim
-	if err := attester.Validate(claim); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("claim validation failed: %w", err))
-	}
-
-	// Authenticate the claim using the rewards package logic
-	if err := attester.Authenticate(claim, signature); err != nil {
-		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("authentication failed: %w", err))
-	}
-
-	// Generate attestation using the rewards package logic
-	_, attestation, err := attester.Attest(claim)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("attestation generation failed: %w", err))
-	}
-
-	res := &v1.GetRewardAttestationResponse{
-		Owner:       attester.EthereumAddress,
-		Attestation: attestation,
-	}
-
-	return connect.NewResponse(res), nil
+	return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("artist-coin attestations are temporarily disabled"))
 }
 
 // GetRewards implements v1connect.CoreServiceHandler.
@@ -1725,6 +1635,26 @@ func (c *CoreService) GetSlashAttestations(ctx context.Context, req *connect.Req
 	}), nil
 }
 
+// gatherEligibleSenderAddresses returns the union of registered validator
+// eth addresses and anti-abuse oracle eth addresses. This is the set the
+// rewards-manager program treats as eligible senders: add attestations are
+// only signed for addresses in this set, delete attestations are only signed
+// for addresses NOT in this set.
+//
+// Validators come from the local consensus-populated core_validators table.
+// AAOs come from the L1 EthRewardsManager contract via the eth-bridge sync.
+func (c *CoreService) gatherEligibleSenderAddresses(ctx context.Context) ([]string, error) {
+	validators, err := c.core.db.GetAllEthAddressesOfRegisteredNodes(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error finding validators: %w", err)
+	}
+	aaos, err := c.core.eth.GetAntiAbuseOracleAddresses(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error finding anti-abuse oracles: %w", err)
+	}
+	return append(validators, aaos...), nil
+}
+
 // GetRewardSenderAttestation implements v1connect.CoreServiceHandler.
 func (c *CoreService) GetRewardSenderAttestation(ctx context.Context, req *connect.Request[v1.GetRewardSenderAttestationRequest]) (*connect.Response[v1.GetRewardSenderAttestationResponse], error) {
 	address := req.Msg.Address
@@ -1737,17 +1667,15 @@ func (c *CoreService) GetRewardSenderAttestation(ctx context.Context, req *conne
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward manager pubkey is required"))
 	}
 
-	validators, err := c.core.db.GetAllEthAddressesOfRegisteredNodes(ctx)
+	eligible, err := c.gatherEligibleSenderAddresses(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("error finding validators: %w", err))
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	notValidator := !slices.ContainsFunc(validators, func(validator string) bool {
-		return strings.EqualFold(validator, address)
-	})
-
-	if notValidator {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address not a validator"))
+	if !slices.ContainsFunc(eligible, func(eth string) bool {
+		return strings.EqualFold(eth, address)
+	}) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address not a registered validator or anti-abuse oracle"))
 	}
 
 	owner, attestation, err := rewards.GetCreateSenderAttestation(c.core.config.EthereumKey, &rewards.CreateSenderAttestationParams{
@@ -1760,6 +1688,44 @@ func (c *CoreService) GetRewardSenderAttestation(ctx context.Context, req *conne
 	}
 
 	return connect.NewResponse(&v1.GetRewardSenderAttestationResponse{
+		Owner:       owner,
+		Attestation: attestation,
+	}), nil
+}
+
+// GetDeleteRewardSenderAttestation implements v1connect.CoreServiceHandler.
+func (c *CoreService) GetDeleteRewardSenderAttestation(ctx context.Context, req *connect.Request[v1.GetDeleteRewardSenderAttestationRequest]) (*connect.Response[v1.GetDeleteRewardSenderAttestationResponse], error) {
+	address := req.Msg.Address
+	if address == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address is required"))
+	}
+
+	rewardsManagerPubkey := req.Msg.RewardsManagerPubkey
+	if rewardsManagerPubkey == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("reward manager pubkey is required"))
+	}
+
+	eligible, err := c.gatherEligibleSenderAddresses(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	if slices.ContainsFunc(eligible, func(eth string) bool {
+		return strings.EqualFold(eth, address)
+	}) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("address is a registered validator or anti-abuse oracle"))
+	}
+
+	owner, attestation, err := rewards.GetDeleteSenderAttestation(c.core.config.EthereumKey, &rewards.DeleteSenderAttestationParams{
+		SenderAddress:               address,
+		RewardsManagerAccountPubKey: rewardsManagerPubkey,
+	})
+
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("could not create attestation"))
+	}
+
+	return connect.NewResponse(&v1.GetDeleteRewardSenderAttestationResponse{
 		Owner:       owner,
 		Attestation: attestation,
 	}), nil
