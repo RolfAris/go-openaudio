@@ -79,7 +79,6 @@ type MediorumConfig struct {
 	DeadHosts                 []string
 	RepairEnabled              bool          `default:"true"`
 	RepairInterval             time.Duration `default:"1h"`
-	RepairQmCidsUseListIndex   bool
 
 	ProgrammableDistributionEnabled bool
 	BlobStorageStreaming             bool
