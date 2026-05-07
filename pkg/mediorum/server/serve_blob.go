@@ -98,11 +98,21 @@ func (ss *MediorumServer) serveBlobInfo(c echo.Context) error {
 		return c.String(500, "database connection issue")
 	}
 
-	if attr, ok := ss.attrCache.Get(key); ok {
+	// Reads use hot-first-then-archive: the bucket the blob lives in falls out
+	// of where we find it, not where bucketForCID would route a fresh write.
+	// The attrCache is keyed per bucket so a primary hit doesn't satisfy an
+	// archive request (and vice versa); we check both keys before going to
+	// the bucket.
+	if attr, ok := ss.attrCache.Get(ss.presenceCacheKey(key, ss.bucket)); ok {
 		return c.JSON(200, attr)
 	}
+	if ss.archiveBucket != nil {
+		if attr, ok := ss.attrCache.Get(ss.presenceCacheKey(key, ss.archiveBucket)); ok {
+			return c.JSON(200, attr)
+		}
+	}
 
-	attr, err := ss.bucket.Attributes(ctx, key)
+	attr, foundIn, err := ss.blobAttrs(ctx, key)
 	if err != nil {
 		if gcerrors.Code(err) == gcerrors.NotFound {
 			return c.String(404, "blob not found")
@@ -111,7 +121,7 @@ func (ss *MediorumServer) serveBlobInfo(c echo.Context) error {
 		return err
 	}
 
-	ss.attrCache.Set(key, attr, imcache.WithExpiration(60*time.Second))
+	ss.attrCache.Set(ss.presenceCacheKey(key, foundIn), attr, imcache.WithExpiration(60*time.Second))
 	return c.JSON(200, attr)
 }
 
@@ -162,7 +172,7 @@ func (ss *MediorumServer) serveBlob(c echo.Context) error {
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, contentDisposition))
 	}
 
-	blob, err := ss.bucket.NewReader(ctx, key, nil)
+	blob, foundIn, err := ss.readBlob(ctx, key)
 
 	// If our bucket doesn't have the file, try to pull it first
 	if err != nil {
@@ -173,10 +183,10 @@ func (ss *MediorumServer) serveBlob(c echo.Context) error {
 			}
 
 			// Try to pull the file first
-			_, pullErr := ss.findAndPullBlob(ctx, cid)
+			_, pullErr := ss.findAndPullBlob(ctx, cid, nil)
 			if pullErr == nil {
 				// Successfully pulled, try reading again
-				blob, err = ss.bucket.NewReader(ctx, key, nil)
+				blob, foundIn, err = ss.readBlob(ctx, key)
 				if err == nil {
 					// Successfully read after pull, continue with normal serving
 				} else {
@@ -185,7 +195,7 @@ func (ss *MediorumServer) serveBlob(c echo.Context) error {
 				}
 			} else {
 				// Pull failed - check if it's due to disk space
-				if !ss.diskHasSpace() {
+				if !ss.diskHasSpaceForCID(cid, nil) {
 					// Disk is full, proxy the request instead of erroring
 					ss.logger.Info("disk full, proxying blob request", zap.String("cid", cid), zap.Error(pullErr))
 					host := ss.findNodeToServeBlob(ctx, cid)
@@ -248,7 +258,11 @@ func (ss *MediorumServer) serveBlob(c echo.Context) error {
 				durationSeconds, _ := c.Get("trackDurationSeconds").(float64)
 				expiry := presignedURLExpiry(durationSeconds)
 
-				signedURL, err := ss.bucket.SignedURL(ctx, key, &gcblob.SignedURLOptions{
+				// Use the bucket the blob was actually found in for the
+				// presigned URL — readBlob's fallback may have located it
+				// in archive even when rank-based routing would have looked
+				// in primary.
+				signedURL, err := foundIn.SignedURL(ctx, key, &gcblob.SignedURLOptions{
 					Expiry: expiry,
 					Method: http.MethodGet,
 				})
@@ -377,12 +391,17 @@ func (ss *MediorumServer) findNodeToServeBlob(_ context.Context, key string) str
 	return ""
 }
 
-func (ss *MediorumServer) findAndPullBlob(ctx context.Context, key string) (string, error) {
+// findAndPullBlob locates a CID on the network and pulls it into the local
+// bucket selected by bucketForCID(key, placementHosts). Pass placementHosts
+// when the caller has placement context (transcode and similar) so the local
+// write lands in the same bucket subsequent reads will check; pass nil for
+// opportunistic pulls (serveBlob fallback, image originals).
+func (ss *MediorumServer) findAndPullBlob(ctx context.Context, key string, placementHosts []string) (string, error) {
 	// start := time.Now()
 
 	hosts, _ := ss.rendezvousAllHosts(key)
 	for _, host := range hosts {
-		err := ss.pullFileFromHost(ctx, host, key)
+		err := ss.pullFileFromHost(ctx, host, key, placementHosts)
 		if err == nil {
 			return host, nil
 		}
@@ -596,7 +615,7 @@ func (ss *MediorumServer) serveInternalBlobGET(c echo.Context) error {
 	cid := c.Param("cid")
 	key := cidutil.ShardCID(cid)
 
-	blob, err := ss.bucket.NewReader(ctx, key, nil)
+	blob, _, err := ss.readBlob(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -606,8 +625,17 @@ func (ss *MediorumServer) serveInternalBlobGET(c echo.Context) error {
 }
 
 func (ss *MediorumServer) serveInternalBlobPOST(c echo.Context) error {
-	if !ss.diskHasSpace() {
-		return c.String(http.StatusServiceUnavailable, "disk is too full to accept new blobs")
+	// Peer-driven push. Placement context, when known to the sender, rides
+	// along in the X-Placement-Hosts header. Validate it (must include self,
+	// all hosts must be registered peers) — the header is unsigned, so an
+	// unvalidated value would let any authenticated peer force primary
+	// routing and bypass archive. On invalid input, fall back to nil
+	// (rank-based routing).
+	placementHosts := decodePlacementHosts(c.Request().Header)
+	if err := ss.validatePlacementHosts(placementHosts); err != nil {
+		ss.logger.Warn("ignoring invalid X-Placement-Hosts header; routing by rank",
+			zap.Strings("placementHosts", placementHosts), zap.Error(err))
+		placementHosts = nil
 	}
 
 	form, err := c.MultipartForm()
@@ -620,6 +648,11 @@ func (ss *MediorumServer) serveInternalBlobPOST(c echo.Context) error {
 	for _, upload := range files {
 		cid := upload.Filename
 		logger := ss.logger.With(zap.String("cid", cid))
+
+		// Per-CID disk check: only the bucket this CID will write to matters.
+		if !ss.diskHasSpaceForCID(cid, placementHosts) {
+			return c.String(http.StatusServiceUnavailable, "disk is too full to accept new blobs")
+		}
 
 		inp, err := upload.Open()
 		if err != nil {
@@ -635,7 +668,7 @@ func (ss *MediorumServer) serveInternalBlobPOST(c echo.Context) error {
 			})
 		}
 
-		err = ss.replicateToMyBucket(c.Request().Context(), cid, inp)
+		err = ss.replicateToMyBucket(c.Request().Context(), cid, inp, placementHosts)
 		if err != nil {
 			ss.logger.Error("accept ERR", zap.Error(err))
 			return err
@@ -703,7 +736,7 @@ func (ss *MediorumServer) serveTrack(c echo.Context) error {
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, contentDisposition))
 	}
 
-	blob, err := ss.bucket.NewReader(ctx, key, nil)
+	blob, _, err := ss.readBlob(ctx, key)
 	// If our bucket doesn't have the file, find a different node
 	if err != nil {
 		if gcerrors.Code(err) == gcerrors.NotFound {
