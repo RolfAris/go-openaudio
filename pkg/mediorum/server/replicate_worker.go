@@ -137,9 +137,10 @@ func (ss *MediorumServer) replicateTranscode(ctx context.Context, upload *Upload
 
 // replicateFile is the shared implementation for replicating files to all necessary mirrors in parallel
 func (ss *MediorumServer) replicateToHosts(ctx context.Context, upload *Upload, cid string, existingMirrors []string, isTranscoded bool) error {
-	// Get the file from our bucket
+	// Get the file from our bucket — hot first, archive fallback so we
+	// source from wherever the blob actually lives on this node.
 	shardedCid := cidutil.ShardCID(cid)
-	_, err := ss.bucket.Attributes(ctx, shardedCid)
+	_, srcBucket, err := ss.blobAttrs(ctx, shardedCid)
 	if err != nil {
 		return fmt.Errorf("failed to get file attributes: %w", err)
 	}
@@ -192,14 +193,14 @@ func (ss *MediorumServer) replicateToHosts(ctx context.Context, upload *Upload, 
 			defer wg.Done()
 
 			// Get a fresh reader for this host
-			reader, err := ss.bucket.NewReader(ctx, shardedCid, nil)
+			reader, err := srcBucket.NewReader(ctx, shardedCid, nil)
 			if err != nil {
 				resultsChan <- replicationResult{host: targetHost, err: err}
 				return
 			}
 			defer reader.Close()
 
-			err = ss.replicateFileToHost(ctx, targetHost, cid, reader)
+			err = ss.replicateFileToHost(ctx, targetHost, cid, reader, upload.PlacementHosts)
 			// TODO: Replicate with TUSD
 			// err = ss.replicateToHost(targetHost, cid, reader, attrs.Size, placementHosts)
 			resultsChan <- replicationResult{host: targetHost, err: err}
