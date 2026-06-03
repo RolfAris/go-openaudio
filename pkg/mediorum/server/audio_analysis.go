@@ -59,12 +59,7 @@ func (ss *MediorumServer) startAudioAnalyzer(ctx context.Context) error {
 }
 
 func (ss *MediorumServer) findMissedAudioAnalysisJobs(ctx context.Context, work chan<- *Upload) {
-	uploads := []*Upload{}
-	err := ss.crud.DB.Where("template = ? and (audio_analysis_status is null or audio_analysis_status != ?)", JobTemplateAudio, JobStatusDone).
-		Order("random()").
-		Find(&uploads).
-		Error
-
+	uploads, err := ss.findMissedAudioAnalysisCandidates(ctx)
 	if err != nil {
 		ss.logger.Warn("failed to find backlog work", zap.Error(err))
 	}
@@ -90,6 +85,24 @@ func (ss *MediorumServer) findMissedAudioAnalysisJobs(ctx context.Context, work 
 			}
 		}
 	}
+}
+
+func (ss *MediorumServer) findMissedAudioAnalysisCandidates(ctx context.Context) ([]*Upload, error) {
+	uploads := []*Upload{}
+	err := ss.crud.DB.WithContext(ctx).
+		Where(`
+			template = ?
+			AND (audio_analysis_status is null or audio_analysis_status != ?)
+			AND NOT (
+				COALESCE(error_count, 0) > ?
+				AND COALESCE(transcode_results::jsonb, '{}'::jsonb) ->> '320' IS NULL
+			)
+		`, JobTemplateAudio, JobStatusDone, missedTranscodeMaxErrorCount).
+		Order("random()").
+		Find(&uploads).
+		Error
+
+	return uploads, err
 }
 
 func (ss *MediorumServer) startAudioAnalysisWorker(workerId int, work chan *Upload) {

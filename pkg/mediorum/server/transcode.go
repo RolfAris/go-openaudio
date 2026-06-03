@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/gif"
@@ -30,7 +31,9 @@ import (
 )
 
 var (
-	audioPreviewDuration = "30" // seconds
+	audioPreviewDuration           = "30" // seconds
+	missedTranscodeMaxErrorCount   = 5
+	errTranscodeRetryLimitExceeded = errors.New("transcode retry limit exceeded")
 )
 
 func (ss *MediorumServer) startTranscoder(ctx context.Context) error {
@@ -109,7 +112,7 @@ func (ss *MediorumServer) findMissedJobs(work chan *Upload, myHost string) {
 	ss.crud.DB.Where("template = 'audio' and status in ? and orig_file_cid != ''", []string{JobStatusNew, JobStatusError}).Find(&uploads)
 
 	for _, upload := range uploads {
-		if upload.ErrorCount > 5 {
+		if upload.ErrorCount > missedTranscodeMaxErrorCount {
 			continue
 		}
 
@@ -349,6 +352,9 @@ func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
 	if err := ss.crud.DB.Where("id = ?", upload.ID).First(&dbUpload).Error; err != nil {
 		return fmt.Errorf("failed to get upload from DB: %w", err)
 	}
+	if transcodeRetryLimitExceeded(dbUpload) {
+		return fmt.Errorf("%w: upload=%s error_count=%d", errTranscodeRetryLimitExceeded, dbUpload.ID, dbUpload.ErrorCount)
+	}
 	dbUpload.TranscodedBy = ss.Config.Self.Host
 	dbUpload.TranscodedAt = time.Now().UTC()
 	dbUpload.Status = JobStatusBusy
@@ -447,6 +453,10 @@ func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
 	}
 
 	return nil
+}
+
+func transcodeRetryLimitExceeded(upload Upload) bool {
+	return upload.Status == JobStatusError && upload.ErrorCount > missedTranscodeMaxErrorCount
 }
 
 type FFProbeResult struct {
