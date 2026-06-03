@@ -207,7 +207,9 @@ func TestUploadPlacementTus(t *testing.T) {
 		assert.Equal(t, 200, resp.StatusCode)
 		u2 = &uploadResp
 		require.NotEqual(t, u2.Status, JobStatusError, "upload failed with error: "+u2.Error)
-		if u2.Status == JobStatusDone {
+		if u2.Status == JobStatusDone &&
+			len(u2.Mirrors) == len(examplePlacement) &&
+			len(u2.TranscodedMirrors) == len(examplePlacement) {
 			break
 		}
 		time.Sleep(time.Second)
