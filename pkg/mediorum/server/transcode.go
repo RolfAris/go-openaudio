@@ -456,7 +456,12 @@ func (ss *MediorumServer) transcode(ctx context.Context, upload *Upload) error {
 }
 
 func transcodeRetryLimitExceeded(upload Upload) bool {
-	return upload.Status == JobStatusError && upload.ErrorCount > missedTranscodeMaxErrorCount
+	return upload.ErrorCount > missedTranscodeMaxErrorCount && !hasTranscodeResult(upload)
+}
+
+func hasTranscodeResult(upload Upload) bool {
+	cid, ok := upload.TranscodeResults["320"]
+	return ok && cid != ""
 }
 
 type FFProbeResult struct {
