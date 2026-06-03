@@ -109,7 +109,7 @@ func TestTranscodeRetryLimitReturnsBeforeBusyUpdate(t *testing.T) {
 		ID:           id,
 		Template:     JobTemplateAudio,
 		OrigFileCID:  "cid-terminal",
-		Status:       JobStatusError,
+		Status:       JobStatusBusy,
 		ErrorCount:   missedTranscodeMaxErrorCount + 1,
 		TranscodedAt: now.Add(-48 * time.Hour),
 	}).Error)
@@ -126,7 +126,7 @@ func TestTranscodeRetryLimitReturnsBeforeBusyUpdate(t *testing.T) {
 
 	var upload Upload
 	require.NoError(t, ss.crud.DB.First(&upload, "id = ?", id).Error)
-	require.Equal(t, JobStatusError, upload.Status)
+	require.Equal(t, JobStatusBusy, upload.Status)
 	require.Equal(t, missedTranscodeMaxErrorCount+1, upload.ErrorCount)
 	require.True(t, upload.TranscodedAt.Equal(now.Add(-48*time.Hour)))
 }
