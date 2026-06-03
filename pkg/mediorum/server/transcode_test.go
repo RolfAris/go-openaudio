@@ -154,6 +154,44 @@ func TestFindMissedJobsMarksUploadsBusyBeforeEnqueue(t *testing.T) {
 	}
 }
 
+func TestTranscodeRetryLimitReturnsBeforeBusyUpdate(t *testing.T) {
+	ctx := context.Background()
+	ss := testNetwork[0]
+	now := time.Now().UTC().Truncate(time.Second)
+	id := fmt.Sprintf("transcode-limit-%d", now.UnixNano())
+
+	cleanup := func() {
+		require.NoError(t, ss.crud.DB.Where("id = ?", id).Delete(&Upload{}).Error)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	require.NoError(t, ss.crud.DB.Create(&Upload{
+		ID:           id,
+		Template:     JobTemplateAudio,
+		OrigFileCID:  "cid-terminal",
+		Status:       JobStatusError,
+		ErrorCount:   missedTranscodeMaxErrorCount + 1,
+		TranscodedAt: now.Add(-48 * time.Hour),
+	}).Error)
+
+	var opsBefore int64
+	require.NoError(t, ss.crud.DB.Table("ops").Count(&opsBefore).Error)
+
+	err := ss.transcode(ctx, &Upload{ID: id})
+	require.ErrorIs(t, err, errTranscodeRetryLimitExceeded)
+
+	var opsAfter int64
+	require.NoError(t, ss.crud.DB.Table("ops").Count(&opsAfter).Error)
+	require.Equal(t, opsBefore, opsAfter)
+
+	var upload Upload
+	require.NoError(t, ss.crud.DB.First(&upload, "id = ?", id).Error)
+	require.Equal(t, JobStatusError, upload.Status)
+	require.Equal(t, missedTranscodeMaxErrorCount+1, upload.ErrorCount)
+	require.True(t, upload.TranscodedAt.Equal(now.Add(-48*time.Hour)))
+}
+
 func uploadIDs(uploads []*Upload) []string {
 	ids := []string{}
 	for _, upload := range uploads {
