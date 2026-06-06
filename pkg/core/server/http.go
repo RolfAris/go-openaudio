@@ -33,6 +33,7 @@ func (s *Server) startEchoServer(ctx context.Context) error {
 	g.GET("/nodes", s.getRegisteredNodes)
 	g.GET("/nodes/verbose", s.getRegisteredNodes)
 	g.GET("/debug/p2p", s.debugP2PConnections)
+	g.GET("/history/status", s.getCoreHistoryStatus)
 	g.GET("/status", func(c echo.Context) error {
 		if s.self == nil {
 			return c.String(http.StatusServiceUnavailable, "starting up")
