@@ -44,6 +44,7 @@ func (ss *MediorumServer) writeQmFile() error {
 	// doit
 	_, err = conn.Conn().PgConn().CopyTo(ctx, blobWriter, "COPY qm_cids TO STDOUT")
 	if err != nil {
+		_ = blobWriter.Close()
 		return bail(err)
 	}
 
