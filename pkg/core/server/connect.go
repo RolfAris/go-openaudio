@@ -250,6 +250,9 @@ func (c *CoreService) GetBlock(ctx context.Context, req *connect.Request[v1.GetB
 	block, err := c.core.db.GetBlock(ctx, req.Msg.Height)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			if prunedErr := c.coreHistoryPrunedError("block", req.Msg.Height); prunedErr != nil {
+				return nil, prunedErr
+			}
 			// fallback to rpc for now, remove after mainnet-alpha
 			return c.getBlockRpcFallback(ctx, req.Msg.Height)
 		}
@@ -355,6 +358,15 @@ func (c *CoreService) GetBlocks(ctx context.Context, req *connect.Request[v1.Get
 	// Sort transactions within each block
 	for _, block := range blockMap {
 		block.Transactions = sortTransactionResponse(block.Transactions)
+	}
+
+	for _, height := range heights {
+		if _, exists := blockMap[height]; exists {
+			continue
+		}
+		if prunedErr := c.coreHistoryPrunedError("block", height); prunedErr != nil {
+			return nil, prunedErr
+		}
 	}
 
 	return connect.NewResponse(&v1.GetBlocksResponse{
@@ -509,6 +521,11 @@ func (c *CoreService) GetTransaction(ctx context.Context, req *connect.Request[v
 
 	block, err := c.core.db.GetBlock(ctx, tx.BlockID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if prunedErr := c.coreHistoryPrunedError("transaction block", tx.BlockID); prunedErr != nil {
+				return nil, prunedErr
+			}
+		}
 		return nil, err
 	}
 
