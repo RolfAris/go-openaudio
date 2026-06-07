@@ -556,6 +556,13 @@ func (s *Server) LoadSnapshotChunk(_ context.Context, chunk *abcitypes.LoadSnaps
 }
 
 func (s *Server) OfferSnapshot(_ context.Context, req *abcitypes.OfferSnapshotRequest) (*abcitypes.OfferSnapshotResponse, error) {
+	if _, err := s.validateSnapshotMetadata(req.Snapshot); err != nil {
+		s.logger.Error("invalid offered snapshot metadata", zap.Error(err))
+		return &abcitypes.OfferSnapshotResponse{
+			Result: abcitypes.OFFER_SNAPSHOT_RESULT_REJECT,
+		}, nil
+	}
+
 	s.snapshotMutex.Lock()
 	defer s.snapshotMutex.Unlock()
 
@@ -677,15 +684,8 @@ func (s *Server) ApplySnapshotChunk(_ context.Context, req *abcitypes.ApplySnaps
 		}, nil
 	}
 
-	offeredMetadata := &Metadata{}
-	if err := json.Unmarshal(offeredSnapshot.Metadata, offeredMetadata); err != nil {
-		s.logger.Error("failed to unmarshal metadata", zap.Error(err), zap.Uint32("chunkIndex", req.Index))
-		return &abcitypes.ApplySnapshotChunkResponse{
-			Result: abcitypes.APPLY_SNAPSHOT_CHUNK_RESULT_REJECT_SNAPSHOT,
-		}, nil
-	}
-
-	if err := offeredMetadata.validate(s.config.GenesisFile.ChainID); err != nil {
+	offeredMetadata, err := s.validateSnapshotMetadata(offeredSnapshot)
+	if err != nil {
 		s.logger.Error("invalid snapshot metadata", zap.Error(err), zap.Uint32("chunkIndex", req.Index))
 		return &abcitypes.ApplySnapshotChunkResponse{
 			Result: abcitypes.APPLY_SNAPSHOT_CHUNK_RESULT_REJECT_SNAPSHOT,
