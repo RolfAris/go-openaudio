@@ -48,8 +48,8 @@ func (s *Server) getSlashAttestation(ctx context.Context, slash *v1.SlashRecomme
 			history, err := s.db.GetValidatorHistoryForID(
 				ctx,
 				db.GetValidatorHistoryForIDParams{
-					ep.Id,
-					ep.ServiceType,
+					SpID:        ep.Id,
+					ServiceType: ep.ServiceType,
 				},
 			)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -147,11 +147,11 @@ func (s *Server) gatherSlashAttestations(ctx context.Context, slash *v1.SlashRec
 	// Reuse registration rendezvous size from configuration
 	rendezvous := common.GetAttestorRendezvous(addrs, keyBytes, s.config.AttRegistrationRSize)
 	attestations := make(map[string]string, s.config.AttRegistrationRSize)
-	slashCopy := *slash
+	slashCopy := proto.Clone(slash).(*corev1.SlashRecommendation)
 	for addr := range rendezvous {
 		if peer, ok := s.connectRPCPeers.Get(addr); ok {
 			resp, err := peer.GetSlashAttestation(ctx, connect.NewRequest(&corev1.GetSlashAttestationRequest{
-				Data: &slashCopy,
+				Data: slashCopy,
 			}))
 			if err != nil {
 				s.logger.Error("failed to get slash attestation from peer", zap.String("peer_address", addr), zap.Error(err))

@@ -526,7 +526,7 @@ func (s *Server) removeValidator(ctx context.Context, ethAddress string) {
 	pubKey := ed25519.PubKey(pubkeyBytes)
 	rendezvous := common.GetAttestorRendezvous(filteredAddrs, pubKey.Bytes(), s.config.AttDeregistrationRSize)
 	attestations := make([]string, 0, s.config.AttRegistrationRSize)
-	dereg := corev1.ValidatorDeregistration{
+	dereg := &corev1.ValidatorDeregistration{
 		CometAddress: node.CometAddress,
 		PubKey:       pubKey.Bytes(),
 		Deadline:     s.cache.currentHeight.Load() + 120,
@@ -536,9 +536,8 @@ func (s *Server) removeValidator(ctx context.Context, ethAddress string) {
 	peers := s.connectRPCPeers.ToMap()
 	for addr := range rendezvous {
 		if addr == s.config.WalletAddress {
-			deregCopy := dereg
 			resp, err := s.self.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
-				Deregistration: &deregCopy,
+				Deregistration: proto.Clone(dereg).(*corev1.ValidatorDeregistration),
 			}))
 			if err != nil {
 				s.logger.Error("failed to get deregistration attestation from peer", zap.String("peer_address", addr), zap.Error(err))
@@ -546,9 +545,8 @@ func (s *Server) removeValidator(ctx context.Context, ethAddress string) {
 			}
 			attestations = append(attestations, resp.Msg.Signature)
 		} else if peer, ok := peers[addr]; ok {
-			deregCopy := dereg
 			resp, err := peer.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
-				Deregistration: &deregCopy,
+				Deregistration: proto.Clone(dereg).(*corev1.ValidatorDeregistration),
 			}))
 			if err != nil {
 				s.logger.Error("failed to get deregistration attestation from peer", zap.String("peer_address", addr), zap.Error(err))
@@ -560,7 +558,7 @@ func (s *Server) removeValidator(ctx context.Context, ethAddress string) {
 
 	deregistrationAtt := &corev1.Attestation{
 		Signatures: attestations,
-		Body:       &corev1.Attestation_ValidatorDeregistration{ValidatorDeregistration: &dereg},
+		Body:       &corev1.Attestation_ValidatorDeregistration{ValidatorDeregistration: dereg},
 	}
 
 	txBytes, err := proto.Marshal(deregistrationAtt)
@@ -629,7 +627,7 @@ func (s *Server) jailValidator(ctx context.Context, ethAddress string) {
 	pubKey := ed25519.PubKey(pubkeyBytes)
 	rendezvous := common.GetAttestorRendezvous(filteredAddrs, pubKey.Bytes(), s.config.AttDeregistrationRSize)
 	attestations := make([]string, 0, s.config.AttRegistrationRSize)
-	dereg := corev1.ValidatorDeregistration{
+	dereg := &corev1.ValidatorDeregistration{
 		CometAddress: node.CometAddress,
 		PubKey:       pubKey.Bytes(),
 		Deadline:     s.cache.currentHeight.Load() + 120,
@@ -638,9 +636,8 @@ func (s *Server) jailValidator(ctx context.Context, ethAddress string) {
 	peers := s.connectRPCPeers.ToMap()
 	for addr := range rendezvous {
 		if addr == s.config.WalletAddress {
-			deregCopy := dereg
 			resp, err := s.self.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
-				Deregistration: &deregCopy,
+				Deregistration: proto.Clone(dereg).(*corev1.ValidatorDeregistration),
 			}))
 			if err != nil {
 				s.logger.Error("failed to get deregistration attestation from peer", zap.String("peer_address", addr), zap.Error(err))
@@ -648,9 +645,8 @@ func (s *Server) jailValidator(ctx context.Context, ethAddress string) {
 			}
 			attestations = append(attestations, resp.Msg.Signature)
 		} else if peer, ok := peers[addr]; ok {
-			deregCopy := dereg
 			resp, err := peer.GetDeregistrationAttestation(ctx, connect.NewRequest(&corev1.GetDeregistrationAttestationRequest{
-				Deregistration: &deregCopy,
+				Deregistration: proto.Clone(dereg).(*corev1.ValidatorDeregistration),
 			}))
 			if err != nil {
 				s.logger.Error("failed to get deregistration attestation from peer", zap.String("peer_address", addr), zap.Error(err))
@@ -662,7 +658,7 @@ func (s *Server) jailValidator(ctx context.Context, ethAddress string) {
 
 	deregistrationAtt := &corev1.Attestation{
 		Signatures: attestations,
-		Body:       &corev1.Attestation_ValidatorDeregistration{ValidatorDeregistration: &dereg},
+		Body:       &corev1.Attestation_ValidatorDeregistration{ValidatorDeregistration: dereg},
 	}
 
 	txBytes, err := proto.Marshal(deregistrationAtt)
