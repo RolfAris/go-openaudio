@@ -57,28 +57,16 @@ var (
 type Metadata struct {
 	Sender      string               `json:"sender"`
 	ChainID     string               `json:"chain_id"`
-	Version     int                  `json:"version,omitempty"`
 	CoreHistory *CoreHistoryMetadata `json:"core_history,omitempty"`
 }
 
 type CoreHistoryMetadata struct {
-	Mode              string   `json:"mode"`
-	RetainFloorHeight int64    `json:"retain_floor_height,omitempty"`
-	Tables            []string `json:"tables,omitempty"`
+	Mode string `json:"mode"`
 }
 
 const (
-	snapshotMetadataVersion    = 1
 	coreHistoryModeFullHistory = "full_history"
-	coreHistoryModeHotWindow   = "hot_window"
 )
-
-var coreHistorySnapshotTables = []string{
-	"core_app_state",
-	"core_blocks",
-	"core_transactions",
-	"core_tx_stats",
-}
 
 func (m *Metadata) validate(chainID string) error {
 	if m.ChainID != chainID {
@@ -91,13 +79,6 @@ func (m *Metadata) validate(chainID string) error {
 
 	switch m.CoreHistory.Mode {
 	case coreHistoryModeFullHistory:
-		if m.CoreHistory.RetainFloorHeight != 0 {
-			return fmt.Errorf("full-history snapshot must not set retain floor: %d", m.CoreHistory.RetainFloorHeight)
-		}
-	case coreHistoryModeHotWindow:
-		if m.CoreHistory.RetainFloorHeight <= 0 {
-			return fmt.Errorf("hot-window snapshot missing retain floor")
-		}
 	default:
 		return fmt.Errorf("unknown core history snapshot mode: %q", m.CoreHistory.Mode)
 	}
@@ -109,10 +90,8 @@ func (s *Server) snapshotMetadata() Metadata {
 	return Metadata{
 		Sender:  s.config.ProposerAddress,
 		ChainID: s.config.GenesisFile.ChainID,
-		Version: snapshotMetadataVersion,
 		CoreHistory: &CoreHistoryMetadata{
-			Mode:   coreHistoryModeFullHistory,
-			Tables: coreHistorySnapshotTables,
+			Mode: coreHistoryModeFullHistory,
 		},
 	}
 }
