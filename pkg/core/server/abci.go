@@ -685,11 +685,8 @@ func (s *Server) ApplySnapshotChunk(_ context.Context, req *abcitypes.ApplySnaps
 		}, nil
 	}
 
-	if offeredMetadata.ChainID != s.config.GenesisFile.ChainID {
-		s.logger.Error("chain ID mismatch",
-			zap.String("offered", offeredMetadata.ChainID),
-			zap.String("expected", s.config.GenesisFile.ChainID),
-			zap.Uint32("chunkIndex", req.Index))
+	if err := offeredMetadata.validate(s.config.GenesisFile.ChainID); err != nil {
+		s.logger.Error("invalid snapshot metadata", zap.Error(err), zap.Uint32("chunkIndex", req.Index))
 		return &abcitypes.ApplySnapshotChunkResponse{
 			Result: abcitypes.APPLY_SNAPSHOT_CHUNK_RESULT_REJECT_SNAPSHOT,
 		}, nil

@@ -55,8 +55,66 @@ var (
 )
 
 type Metadata struct {
-	Sender  string `json:"sender"`
-	ChainID string `json:"chain_id"`
+	Sender      string               `json:"sender"`
+	ChainID     string               `json:"chain_id"`
+	Version     int                  `json:"version,omitempty"`
+	CoreHistory *CoreHistoryMetadata `json:"core_history,omitempty"`
+}
+
+type CoreHistoryMetadata struct {
+	Mode              string   `json:"mode"`
+	RetainFloorHeight int64    `json:"retain_floor_height,omitempty"`
+	Tables            []string `json:"tables,omitempty"`
+}
+
+const (
+	snapshotMetadataVersion    = 1
+	coreHistoryModeFullHistory = "full_history"
+	coreHistoryModeHotWindow   = "hot_window"
+)
+
+var coreHistorySnapshotTables = []string{
+	"core_app_state",
+	"core_blocks",
+	"core_transactions",
+	"core_tx_stats",
+}
+
+func (m *Metadata) validate(chainID string) error {
+	if m.ChainID != chainID {
+		return fmt.Errorf("chain ID mismatch: offered %q, expected %q", m.ChainID, chainID)
+	}
+
+	if m.CoreHistory == nil {
+		return nil
+	}
+
+	switch m.CoreHistory.Mode {
+	case coreHistoryModeFullHistory:
+		if m.CoreHistory.RetainFloorHeight != 0 {
+			return fmt.Errorf("full-history snapshot must not set retain floor: %d", m.CoreHistory.RetainFloorHeight)
+		}
+	case coreHistoryModeHotWindow:
+		if m.CoreHistory.RetainFloorHeight <= 0 {
+			return fmt.Errorf("hot-window snapshot missing retain floor")
+		}
+	default:
+		return fmt.Errorf("unknown core history snapshot mode: %q", m.CoreHistory.Mode)
+	}
+
+	return nil
+}
+
+func (s *Server) snapshotMetadata() Metadata {
+	return Metadata{
+		Sender:  s.config.ProposerAddress,
+		ChainID: s.config.GenesisFile.ChainID,
+		Version: snapshotMetadataVersion,
+		CoreHistory: &CoreHistoryMetadata{
+			Mode:   coreHistoryModeFullHistory,
+			Tables: coreHistorySnapshotTables,
+		},
+	}
 }
 
 // Helper functions for common filepath patterns
@@ -321,10 +379,7 @@ func (s *Server) createSnapshot(logger *zap.Logger, height int64) error {
 
 	logger.Info("Writing snapshot metadata", zap.Int64("height", blockHeight))
 
-	b, err := json.Marshal(Metadata{
-		Sender:  s.config.ProposerAddress,
-		ChainID: s.config.GenesisFile.ChainID,
-	})
+	b, err := json.Marshal(s.snapshotMetadata())
 	if err != nil {
 		return fmt.Errorf("error marshalling metadata: %v", err)
 	}
