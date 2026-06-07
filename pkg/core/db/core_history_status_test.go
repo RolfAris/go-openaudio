@@ -47,14 +47,14 @@ func TestGetCoreHistoryStatusReportsIndexedBounds(t *testing.T) {
 
 	_, err = conn.Exec(ctx, `
 		create temporary table core_blocks(height bigint);
-			create temporary table core_transactions(block_id bigint);
-			create temporary table core_app_state(block_height bigint);
-			create temporary table core_tx_stats(block_height bigint);
-			create index on core_blocks(height);
-			create index on core_transactions(block_id);
-			create index on core_app_state(block_height);
+		create temporary table core_transactions(block_id bigint);
+		create temporary table core_app_state(block_height bigint);
+		create temporary table core_tx_stats(block_height bigint);
+		create index on core_blocks(height);
+		create index on core_transactions(block_id);
+		create index on core_app_state(block_height);
 
-			insert into core_blocks select generate_series(1, 10);
+		insert into core_blocks select generate_series(1, 10);
 		insert into core_transactions select generate_series(1, 10);
 		insert into core_app_state select generate_series(1, 10);
 		insert into core_tx_stats select generate_series(1, 10);
