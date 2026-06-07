@@ -76,8 +76,9 @@ left join pg_class c on c.oid = rel.oid
 
 func (q *Queries) GetCoreHistoryStatus(ctx context.Context, retainFloorHeight int64) (*CoreHistoryStatus, error) {
 	status := &CoreHistoryStatus{
-		RetainFloorHeight: retainFloorHeight,
-		Tables:            make([]CoreHistoryTableStatus, 0, len(coreHistoryTables)),
+		RetainFloorHeight:                   retainFloorHeight,
+		Tables:                              make([]CoreHistoryTableStatus, 0, len(coreHistoryTables)),
+		EstimatedBytesBelowRetainFloorKnown: true,
 	}
 
 	for _, table := range coreHistoryTables {
@@ -90,7 +91,8 @@ func (q *Queries) GetCoreHistoryStatus(ctx context.Context, retainFloorHeight in
 		status.TotalRelationBytes += tableStatus.RelationBytes
 		if tableStatus.EstimatedBytesBelowRetainFloor != nil {
 			status.EstimatedBytesBelowRetainFloor += *tableStatus.EstimatedBytesBelowRetainFloor
-			status.EstimatedBytesBelowRetainFloorKnown = true
+		} else {
+			status.EstimatedBytesBelowRetainFloorKnown = false
 		}
 	}
 

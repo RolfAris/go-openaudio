@@ -67,7 +67,7 @@ func TestGetCoreHistoryStatusReportsIndexedBounds(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 6, status.RetainFloorHeight)
 	require.Len(t, status.Tables, 4)
-	require.True(t, status.EstimatedBytesBelowRetainFloorKnown)
+	require.False(t, status.EstimatedBytesBelowRetainFloorKnown)
 	require.Positive(t, status.TotalRelationBytes)
 	require.Positive(t, status.EstimatedBytesBelowRetainFloor)
 
