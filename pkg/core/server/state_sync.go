@@ -84,6 +84,23 @@ func (m *Metadata) validate(chainID string) error {
 	return nil
 }
 
+func (s *Server) validateSnapshotMetadata(snapshot *v1.Snapshot) (*Metadata, error) {
+	if snapshot == nil {
+		return nil, errors.New("missing snapshot")
+	}
+
+	var metadata Metadata
+	if err := json.Unmarshal(snapshot.Metadata, &metadata); err != nil {
+		return nil, fmt.Errorf("unmarshal metadata: %w", err)
+	}
+
+	if err := metadata.validate(s.config.GenesisFile.ChainID); err != nil {
+		return nil, err
+	}
+
+	return &metadata, nil
+}
+
 func (s *Server) snapshotMetadata() Metadata {
 	return Metadata{
 		Sender:  s.config.ProposerAddress,

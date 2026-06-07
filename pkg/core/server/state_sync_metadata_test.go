@@ -94,6 +94,76 @@ func TestMetadataValidateCoreHistoryModes(t *testing.T) {
 	}
 }
 
+func TestOfferSnapshotAcceptsLegacySnapshotMetadata(t *testing.T) {
+	s := &Server{
+		config: &config.Config{
+			RootDir:     t.TempDir(),
+			GenesisFile: &cometbfttypes.GenesisDoc{ChainID: "audius-test"},
+			StateSync:   &config.StateSyncConfig{},
+		},
+		logger: zap.NewNop(),
+	}
+
+	metadata, err := json.Marshal(Metadata{
+		Sender:  "validator-a",
+		ChainID: "audius-test",
+	})
+	require.NoError(t, err)
+
+	res, err := s.OfferSnapshot(context.Background(), &abcitypes.OfferSnapshotRequest{
+		Snapshot: &abciapi.Snapshot{
+			Height:   123,
+			Format:   1,
+			Chunks:   2,
+			Hash:     []byte("snapshot-hash"),
+			Metadata: metadata,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, abcitypes.OFFER_SNAPSHOT_RESULT_ACCEPT, res.Result)
+	require.Equal(t, uint64(123), s.acceptedSnapshotHeight)
+
+	offeredSnapshot, err := s.GetOfferedSnapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(123), offeredSnapshot.Height)
+}
+
+func TestOfferSnapshotRejectsUnsupportedCoreHistoryModeBeforePersisting(t *testing.T) {
+	s := &Server{
+		config: &config.Config{
+			RootDir:     t.TempDir(),
+			GenesisFile: &cometbfttypes.GenesisDoc{ChainID: "audius-test"},
+			StateSync:   &config.StateSyncConfig{},
+		},
+		logger: zap.NewNop(),
+	}
+
+	metadata, err := json.Marshal(Metadata{
+		Sender:  "validator-a",
+		ChainID: "audius-test",
+		CoreHistory: &CoreHistoryMetadata{
+			Mode: "partitioned_epoch_archive",
+		},
+	})
+	require.NoError(t, err)
+
+	res, err := s.OfferSnapshot(context.Background(), &abcitypes.OfferSnapshotRequest{
+		Snapshot: &abciapi.Snapshot{
+			Height:   123,
+			Format:   1,
+			Chunks:   1,
+			Hash:     []byte("snapshot-hash"),
+			Metadata: metadata,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, abcitypes.OFFER_SNAPSHOT_RESULT_REJECT, res.Result)
+	require.Zero(t, s.acceptedSnapshotHeight)
+
+	_, err = s.GetOfferedSnapshot()
+	require.Error(t, err, "invalid snapshot metadata must be rejected before storing offer metadata")
+}
+
 func TestApplySnapshotChunkAcceptsLegacySnapshotMetadata(t *testing.T) {
 	s := &Server{
 		config: &config.Config{
