@@ -24,11 +24,8 @@ func TestSnapshotMetadataDeclaresFullCoreHistory(t *testing.T) {
 	meta := s.snapshotMetadata()
 	require.Equal(t, "validator-a", meta.Sender)
 	require.Equal(t, "audius-test", meta.ChainID)
-	require.Equal(t, snapshotMetadataVersion, meta.Version)
 	require.NotNil(t, meta.CoreHistory)
 	require.Equal(t, coreHistoryModeFullHistory, meta.CoreHistory.Mode)
-	require.Zero(t, meta.CoreHistory.RetainFloorHeight)
-	require.Equal(t, coreHistorySnapshotTables, meta.CoreHistory.Tables)
 	require.NoError(t, meta.validate("audius-test"))
 
 	payload, err := json.Marshal(meta)
@@ -38,7 +35,6 @@ func TestSnapshotMetadataDeclaresFullCoreHistory(t *testing.T) {
 	require.NoError(t, json.Unmarshal(payload, &roundTripped))
 	require.NoError(t, roundTripped.validate("audius-test"))
 	require.Equal(t, coreHistoryModeFullHistory, roundTripped.CoreHistory.Mode)
-	require.Equal(t, coreHistorySnapshotTables, roundTripped.CoreHistory.Tables)
 }
 
 func TestMetadataValidateAcceptsLegacySnapshotMetadata(t *testing.T) {
@@ -68,41 +64,13 @@ func TestMetadataValidateCoreHistoryModes(t *testing.T) {
 		{
 			name: "full history",
 			coreHistory: &CoreHistoryMetadata{
-				Mode:   coreHistoryModeFullHistory,
-				Tables: coreHistorySnapshotTables,
+				Mode: coreHistoryModeFullHistory,
 			},
-		},
-		{
-			name: "full history with retain floor",
-			coreHistory: &CoreHistoryMetadata{
-				Mode:              coreHistoryModeFullHistory,
-				RetainFloorHeight: 100,
-				Tables:            coreHistorySnapshotTables,
-			},
-			wantErr: "full-history snapshot must not set retain floor",
-		},
-		{
-			name: "hot window",
-			coreHistory: &CoreHistoryMetadata{
-				Mode:              coreHistoryModeHotWindow,
-				RetainFloorHeight: 100,
-				Tables:            coreHistorySnapshotTables,
-			},
-		},
-		{
-			name: "hot window without retain floor",
-			coreHistory: &CoreHistoryMetadata{
-				Mode:   coreHistoryModeHotWindow,
-				Tables: coreHistorySnapshotTables,
-			},
-			wantErr: "hot-window snapshot missing retain floor",
 		},
 		{
 			name: "unknown future mode",
 			coreHistory: &CoreHistoryMetadata{
-				Mode:              "partitioned_epoch_archive",
-				RetainFloorHeight: 100,
-				Tables:            coreHistorySnapshotTables,
+				Mode: "partitioned_epoch_archive",
 			},
 			wantErr: "unknown core history snapshot mode",
 		},
@@ -113,7 +81,6 @@ func TestMetadataValidateCoreHistoryModes(t *testing.T) {
 			meta := Metadata{
 				Sender:      "validator-a",
 				ChainID:     "audius-test",
-				Version:     snapshotMetadataVersion,
 				CoreHistory: tt.coreHistory,
 			}
 
@@ -172,11 +139,8 @@ func TestApplySnapshotChunkRejectsUnsupportedCoreHistoryMode(t *testing.T) {
 	metadata, err := json.Marshal(Metadata{
 		Sender:  "validator-a",
 		ChainID: "audius-test",
-		Version: snapshotMetadataVersion,
 		CoreHistory: &CoreHistoryMetadata{
-			Mode:              "partitioned_epoch_archive",
-			RetainFloorHeight: 100,
-			Tables:            coreHistorySnapshotTables,
+			Mode: "partitioned_epoch_archive",
 		},
 	})
 	require.NoError(t, err)
