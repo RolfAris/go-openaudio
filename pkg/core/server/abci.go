@@ -804,6 +804,12 @@ func (s *Server) ApplySnapshotChunk(_ context.Context, req *abcitypes.ApplySnaps
 				Result: abcitypes.APPLY_SNAPSHOT_CHUNK_RESULT_RETRY,
 			}, nil
 		}
+		if offeredMetadata.CoreHistory != nil && offeredMetadata.CoreHistory.Mode == coreHistoryModeRetainedWindow {
+			s.abciState.lastRetainHeight = offeredMetadata.CoreHistory.RetainFloorHeight
+			s.logger.Info("restored retained core history floor from snapshot",
+				zap.Int64("retain_floor_height", offeredMetadata.CoreHistory.RetainFloorHeight),
+				zap.Int64("oldest_block_height", offeredMetadata.CoreHistory.OldestBlockHeight))
+		}
 
 		if err := s.CleanupStateSync(); err != nil {
 			// don't need to fail the snapshot chunk if cleanup fails

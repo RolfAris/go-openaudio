@@ -3,12 +3,15 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/OpenAudio/go-openaudio/pkg/core/config"
+	"github.com/OpenAudio/go-openaudio/pkg/core/db"
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	abciapi "github.com/cometbft/cometbft/api/cometbft/abci/v1"
 	cometbfttypes "github.com/cometbft/cometbft/types"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -35,6 +38,53 @@ func TestSnapshotMetadataDeclaresFullCoreHistory(t *testing.T) {
 	require.NoError(t, json.Unmarshal(payload, &roundTripped))
 	require.NoError(t, roundTripped.validate("audius-test"))
 	require.Equal(t, coreHistoryModeFullHistory, roundTripped.CoreHistory.Mode)
+}
+
+func TestCoreHistorySnapshotMetadataWaitsForTrackedTablesToClearFloor(t *testing.T) {
+	dsn := os.Getenv("TEST_DB_URL")
+	if dsn == "" {
+		t.Skip("TEST_DB_URL not set")
+	}
+
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, conn.Close(ctx))
+	})
+
+	_, err = conn.Exec(ctx, `
+		create temporary table core_blocks(height bigint);
+		create temporary table core_transactions(block_id bigint);
+		create temporary table core_app_state(block_height bigint);
+		create temporary table core_tx_stats(block_height bigint);
+
+		insert into core_blocks values (80), (81);
+		insert into core_transactions values (79), (80), (81);
+		insert into core_app_state values (80), (81);
+		insert into core_tx_stats values (80), (81);
+	`)
+	require.NoError(t, err)
+
+	s := &Server{
+		config:    &config.Config{RetainHeight: 40},
+		logger:    zap.NewNop(),
+		db:        db.New(conn),
+		abciState: NewABCIState(80),
+	}
+
+	meta := s.coreHistorySnapshotMetadata()
+	require.NotNil(t, meta)
+	require.Equal(t, coreHistoryModeFullHistory, meta.Mode)
+
+	_, err = conn.Exec(ctx, `delete from core_transactions where block_id < 80`)
+	require.NoError(t, err)
+
+	meta = s.coreHistorySnapshotMetadata()
+	require.NotNil(t, meta)
+	require.Equal(t, coreHistoryModeRetainedWindow, meta.Mode)
+	require.EqualValues(t, 80, meta.RetainFloorHeight)
+	require.EqualValues(t, 80, meta.OldestBlockHeight)
 }
 
 func TestMetadataValidateAcceptsLegacySnapshotMetadata(t *testing.T) {
@@ -66,6 +116,30 @@ func TestMetadataValidateCoreHistoryModes(t *testing.T) {
 			coreHistory: &CoreHistoryMetadata{
 				Mode: coreHistoryModeFullHistory,
 			},
+		},
+		{
+			name: "retained window",
+			coreHistory: &CoreHistoryMetadata{
+				Mode:              coreHistoryModeRetainedWindow,
+				RetainFloorHeight: 80,
+				OldestBlockHeight: 80,
+			},
+		},
+		{
+			name: "retained window missing floor",
+			coreHistory: &CoreHistoryMetadata{
+				Mode: coreHistoryModeRetainedWindow,
+			},
+			wantErr: "missing retain floor",
+		},
+		{
+			name: "retained window oldest below floor",
+			coreHistory: &CoreHistoryMetadata{
+				Mode:              coreHistoryModeRetainedWindow,
+				RetainFloorHeight: 80,
+				OldestBlockHeight: 79,
+			},
+			wantErr: "is below retain floor",
 		},
 		{
 			name: "unknown future mode",
