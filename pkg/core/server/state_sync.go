@@ -77,9 +77,7 @@ func (m *Metadata) validate(chainID string) error {
 		return nil
 	}
 
-	switch m.CoreHistory.Mode {
-	case coreHistoryModeFullHistory:
-	default:
+	if m.CoreHistory.Mode != coreHistoryModeFullHistory {
 		return fmt.Errorf("unknown core history snapshot mode: %q", m.CoreHistory.Mode)
 	}
 
