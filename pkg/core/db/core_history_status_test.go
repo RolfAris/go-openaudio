@@ -53,6 +53,7 @@ func TestGetCoreHistoryStatusReportsIndexedBounds(t *testing.T) {
 		create index on core_blocks(height);
 		create index on core_transactions(block_id);
 		create index on core_app_state(block_height);
+		create index on core_tx_stats(block_height);
 
 		insert into core_blocks select generate_series(1, 10);
 		insert into core_transactions select generate_series(1, 10);
@@ -70,7 +71,7 @@ func TestGetCoreHistoryStatusReportsIndexedBounds(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 6, status.RetainFloorHeight)
 	require.Len(t, status.Tables, 4)
-	require.False(t, status.EstimatedBytesBelowRetainFloorKnown)
+	require.True(t, status.EstimatedBytesBelowRetainFloorKnown)
 	require.Positive(t, status.TotalRelationBytes)
 	require.Positive(t, status.EstimatedBytesBelowRetainFloor)
 
@@ -84,10 +85,11 @@ func TestGetCoreHistoryStatusReportsIndexedBounds(t *testing.T) {
 	require.Positive(t, *blocks.EstimatedBytesBelowRetainFloor)
 
 	txStats := requireCoreHistoryTableStatus(t, status, "core_tx_stats")
-	require.False(t, txStats.HeightBoundsIndexed)
-	require.Nil(t, txStats.MinHeight)
-	require.Nil(t, txStats.EstimatedRowsBelowRetainFloor)
-	require.Contains(t, txStats.BelowRetainFloorEstimateUnavailable, "not indexed")
+	require.True(t, txStats.HeightBoundsIndexed)
+	require.EqualValues(t, 1, *txStats.MinHeight)
+	require.EqualValues(t, 10, *txStats.MaxHeight)
+	require.EqualValues(t, 5, *txStats.EstimatedRowsBelowRetainFloor)
+	require.Empty(t, txStats.BelowRetainFloorEstimateUnavailable)
 }
 
 func requireCoreHistoryTableStatus(t *testing.T, status *CoreHistoryStatus, name string) CoreHistoryTableStatus {

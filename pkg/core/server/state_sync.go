@@ -61,11 +61,14 @@ type Metadata struct {
 }
 
 type CoreHistoryMetadata struct {
-	Mode string `json:"mode"`
+	Mode              string `json:"mode"`
+	RetainFloorHeight int64  `json:"retain_floor_height,omitempty"`
+	OldestBlockHeight int64  `json:"oldest_block_height,omitempty"`
 }
 
 const (
-	coreHistoryModeFullHistory = "full_history"
+	coreHistoryModeFullHistory    = "full_history"
+	coreHistoryModeRetainedWindow = "retained_window"
 )
 
 func (m *Metadata) validate(chainID string) error {
@@ -77,7 +80,17 @@ func (m *Metadata) validate(chainID string) error {
 		return nil
 	}
 
-	if m.CoreHistory.Mode != coreHistoryModeFullHistory {
+	switch m.CoreHistory.Mode {
+	case coreHistoryModeFullHistory:
+		return nil
+	case coreHistoryModeRetainedWindow:
+		if m.CoreHistory.RetainFloorHeight <= 1 {
+			return fmt.Errorf("retained-window core history missing retain floor: %d", m.CoreHistory.RetainFloorHeight)
+		}
+		if m.CoreHistory.OldestBlockHeight > 0 && m.CoreHistory.OldestBlockHeight < m.CoreHistory.RetainFloorHeight {
+			return fmt.Errorf("retained-window core history oldest block %d is below retain floor %d", m.CoreHistory.OldestBlockHeight, m.CoreHistory.RetainFloorHeight)
+		}
+	default:
 		return fmt.Errorf("unknown core history snapshot mode: %q", m.CoreHistory.Mode)
 	}
 
@@ -103,12 +116,51 @@ func (s *Server) validateSnapshotMetadata(snapshot *v1.Snapshot) (*Metadata, err
 
 func (s *Server) snapshotMetadata() Metadata {
 	return Metadata{
-		Sender:  s.config.ProposerAddress,
-		ChainID: s.config.GenesisFile.ChainID,
-		CoreHistory: &CoreHistoryMetadata{
-			Mode: coreHistoryModeFullHistory,
-		},
+		Sender:      s.config.ProposerAddress,
+		ChainID:     s.config.GenesisFile.ChainID,
+		CoreHistory: s.coreHistorySnapshotMetadata(),
 	}
+}
+
+func (s *Server) coreHistorySnapshotMetadata() *CoreHistoryMetadata {
+	metadata := &CoreHistoryMetadata{Mode: coreHistoryModeFullHistory}
+	if s == nil || s.db == nil {
+		return metadata
+	}
+
+	retainFloor := s.coreHistoryRetainFloor()
+	if retainFloor <= 1 {
+		return metadata
+	}
+
+	status, err := s.db.GetCoreHistoryStatus(context.Background(), retainFloor)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("could not inspect core history for snapshot metadata", zap.Error(err))
+		}
+		return metadata
+	}
+
+	var oldestBlockHeight int64
+	for _, table := range status.Tables {
+		if table.MinHeight == nil {
+			continue
+		}
+		if *table.MinHeight < retainFloor {
+			return metadata
+		}
+		if table.Name == "core_blocks" {
+			oldestBlockHeight = *table.MinHeight
+		}
+	}
+
+	if oldestBlockHeight > 1 {
+		metadata.Mode = coreHistoryModeRetainedWindow
+		metadata.RetainFloorHeight = retainFloor
+		metadata.OldestBlockHeight = oldestBlockHeight
+	}
+
+	return metadata
 }
 
 // Helper functions for common filepath patterns
@@ -352,6 +404,11 @@ func (s *Server) createSnapshot(logger *zap.Logger, height int64) error {
 		return fmt.Errorf("error creating latest snapshot directory: %v", err)
 	}
 
+	b, err := json.Marshal(s.snapshotMetadata())
+	if err != nil {
+		return fmt.Errorf("error marshalling metadata: %v", err)
+	}
+
 	logger.Info("Creating pg_dump", zap.Int64("height", blockHeight))
 
 	if err := s.createPgDump(logger, latestSnapshotDir); err != nil {
@@ -372,11 +429,6 @@ func (s *Server) createSnapshot(logger *zap.Logger, height int64) error {
 	}
 
 	logger.Info("Writing snapshot metadata", zap.Int64("height", blockHeight))
-
-	b, err := json.Marshal(s.snapshotMetadata())
-	if err != nil {
-		return fmt.Errorf("error marshalling metadata: %v", err)
-	}
 
 	snapshotMetadata := v1.Snapshot{
 		Height:   uint64(blockHeight),

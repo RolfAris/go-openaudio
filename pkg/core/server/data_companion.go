@@ -152,14 +152,52 @@ func (s *Server) manageBlockRetention(ctx context.Context) {
 		s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting for blocks to accumulate")
 		return
 	}
+	retainFloorHeight := int64(blockRetainHeight.App)
 
 	if err := conn.SetBlockRetainHeight(ctx, blockRetainHeight.App); err != nil {
 		s.logger.Error("dc could not set block retain height", zap.Error(err))
+		s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting after block retain height error")
+		return
 	}
 
 	if err := conn.SetBlockResultsRetainHeight(ctx, blockRetainHeight.App); err != nil {
 		s.logger.Error("dc could not set block results retain height", zap.Error(err))
+		s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting after block results retain height error")
+		return
+	}
+
+	if err := s.manageCoreHistoryRetention(ctx, retainFloorHeight); err != nil {
+		s.logger.Error("dc could not prune core history", zap.Int64("retain_height", retainFloorHeight), zap.Error(err))
+		s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting after core history prune error")
+		return
 	}
 
 	s.SleepingProcessWithMetadata(ProcessStateDataCompanion, "Waiting for next cycle")
+}
+
+func (s *Server) manageCoreHistoryRetention(ctx context.Context, retainFloorHeight int64) error {
+	batchSize := s.config.CoreHistoryPruneBatchSize
+	if batchSize <= 0 || retainFloorHeight <= 1 {
+		return nil
+	}
+
+	result, err := s.db.PruneCoreHistory(ctx, retainFloorHeight, batchSize)
+	if err != nil {
+		return err
+	}
+
+	if result.DeletedRows > 0 {
+		s.logger.Info("pruned retained core history",
+			zap.Int64("retain_floor_height", result.RetainFloorHeight),
+			zap.Int64("batch_size", result.BatchSize),
+			zap.Int64("deleted_rows", result.DeletedRows),
+			zap.Bool("complete", result.Complete),
+			zap.Any("tables", result.Tables))
+	}
+
+	if !result.Complete {
+		s.RunningProcessWithMetadata(ProcessStateDataCompanion, "Core history retention still has rows below floor")
+	}
+
+	return nil
 }

@@ -58,7 +58,8 @@ var coreHistoryTables = []coreHistoryTable{
 	{
 		name:                "core_tx_stats",
 		heightColumn:        "block_height",
-		heightBoundsIndexed: false,
+		heightBoundsIndexed: true,
+		heightBoundsSQL:     `select min(block_height)::bigint, max(block_height)::bigint from core_tx_stats`,
 	},
 }
 

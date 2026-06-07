@@ -95,19 +95,22 @@ type Config struct {
 	CoreServerAddr  string
 	NodeEndpoint    string
 	Archive         bool
-	LogLevel        string
+	// Maximum rows to delete from each core-history table per retention pass.
+	// Set to 0 to disable SQL history pruning while leaving CometBFT pruning on.
+	CoreHistoryPruneBatchSize int64
+	LogLevel                  string
 
 	/* Ethereum Config */
 	EthRPCUrl          string
 	EthRegistryAddress string
 
 	/* System Config */
-	RunDownMigration             bool
-	SlaRollupInterval            int
-	ValidatorVotingPower         int
-	ValidatorPurgeMinValidators  int
-	ValidatorWardenIntervalMins  int // how often the validator warden checks for underperformance (minutes)
-	UseHttpsForSdk               bool
+	RunDownMigration            bool
+	SlaRollupInterval           int
+	ValidatorVotingPower        int
+	ValidatorPurgeMinValidators int
+	ValidatorWardenIntervalMins int // how often the validator warden checks for underperformance (minutes)
+	UseHttpsForSdk              bool
 
 	StateSync *StateSyncConfig
 
@@ -178,6 +181,7 @@ func ReadConfig() (*Config, error) {
 	// (default) approximately one week of blocks
 	cfg.RetainHeight = int64(env.GetInt(604800, "OPENAUDIO_RETAIN_HEIGHT", "retainHeight"))
 	cfg.Archive = env.Get("false", "OPENAUDIO_ARCHIVE", "archive") == "true"
+	cfg.CoreHistoryPruneBatchSize = int64(env.GetInt(50000, "OPENAUDIO_CORE_HISTORY_PRUNE_BATCH_SIZE", "coreHistoryPruneBatchSize"))
 
 	cfg.AttRegistrationMin = 5
 	cfg.AttRegistrationRSize = 15
