@@ -132,6 +132,20 @@ func TestGetTransactionReturnsPrunedErrorWhenBlockRowMissingBelowFloor(t *testin
 	require.ErrorContains(t, err, "transaction block at height 899 is below retained core history floor 900")
 }
 
+func TestGetTransactionReturnsNotFoundWhenTransactionRowPruned(t *testing.T) {
+	c := newCoreHistoryPrunedContractService(t, coreHistoryPrunedContractDB{
+		transactionMissing: true,
+	})
+
+	_, err := c.GetTransaction(context.Background(), connect.NewRequest(&v1.GetTransactionRequest{
+		TxHash: "0xold",
+	}))
+
+	require.Error(t, err)
+	require.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
+	require.ErrorContains(t, err, "transaction 0xold not found in retained core history (retained floor 900)")
+}
+
 func newCoreHistoryPrunedContractService(t *testing.T, database coreHistoryPrunedContractDB) *CoreService {
 	t.Helper()
 
@@ -152,6 +166,7 @@ func newCoreHistoryPrunedContractService(t *testing.T, database coreHistoryPrune
 
 type coreHistoryPrunedContractDB struct {
 	transactionBlockID int64
+	transactionMissing bool
 }
 
 func (d coreHistoryPrunedContractDB) Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error) {
@@ -164,6 +179,9 @@ func (d coreHistoryPrunedContractDB) Query(_ context.Context, _ string, _ ...int
 
 func (d coreHistoryPrunedContractDB) QueryRow(_ context.Context, query string, _ ...interface{}) pgx.Row {
 	if strings.Contains(query, "from core_transactions") && strings.Contains(query, "lower(tx_hash)") {
+		if d.transactionMissing {
+			return coreHistoryPrunedContractRow{err: pgx.ErrNoRows}
+		}
 		return coreHistoryPrunedContractRow{values: []interface{}{
 			int64(1),
 			d.transactionBlockID,

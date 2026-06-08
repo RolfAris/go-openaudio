@@ -516,6 +516,11 @@ func (c *CoreService) GetTransaction(ctx context.Context, req *connect.Request[v
 
 	tx, err := c.core.db.GetTx(ctx, txhash)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			if prunedErr := c.coreHistoryMissingTransactionError(txhash); prunedErr != nil {
+				return nil, prunedErr
+			}
+		}
 		return nil, err
 	}
 
