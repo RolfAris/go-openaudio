@@ -7,6 +7,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	corev1 "github.com/OpenAudio/go-openaudio/pkg/api/core/v1"
 	"github.com/OpenAudio/go-openaudio/pkg/integration_tests/utils"
@@ -20,7 +21,7 @@ func TestBlockCreation(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = utils.WaitForDevnetHealthy()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var blockOne *corev1.Block
 	var blockTwo *corev1.Block

@@ -12,7 +12,7 @@ services:
       - 'node3.oap.devnet:host-gateway'
       - 'node4.oap.devnet:host-gateway'
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://node1.oap.devnet/" ]
+      test: [ "CMD", "curl", "-f", "http://localhost/" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -46,7 +46,7 @@ services:
     env_file:
       - ./dev/env/openaudio-1.env
     environment:
-      - OPENAUDIO_HOT_RELOAD=true
+      - OPENAUDIO_HOT_RELOAD=${OPENAUDIO_HOT_RELOAD:-true}
       - OPENAUDIO_CI=${OPENAUDIO_CI:-}
       - OPENAUDIO_REPAIR_INTERVAL=2m
     extra_hosts:
@@ -55,11 +55,11 @@ services:
       - 'node3.oap.devnet:host-gateway'
       - 'node4.oap.devnet:host-gateway'
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://node1.oap.devnet/" ]
+      test: [ "CMD-SHELL", "curl -fsk --max-time 5 https://localhost/health-check | grep -q '\"ready\":true'" ]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 60s
     volumes:
       - ./cmd:/app/cmd
       - ./pkg:/app/pkg
@@ -83,11 +83,11 @@ services:
       - 'node3.oap.devnet:host-gateway'
       - 'node4.oap.devnet:host-gateway'
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://node2.oap.devnet/" ]
+      test: [ "CMD-SHELL", "curl -fsk --max-time 5 https://localhost/health-check | grep -q '\"ready\":true'" ]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 60s
     volumes:
       - ./cmd:/app/cmd
       - ./pkg:/app/pkg
@@ -109,11 +109,11 @@ services:
       - 'node3.oap.devnet:host-gateway'
       - 'node4.oap.devnet:host-gateway'
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://node3.oap.devnet/" ]
+      test: [ "CMD-SHELL", "curl -fsk --max-time 5 https://localhost/health-check | grep -q '\"ready\":true'" ]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 60s
     volumes:
       - ./cmd:/app/cmd
       - ./pkg:/app/pkg
@@ -135,11 +135,11 @@ services:
       - 'node3.oap.devnet:host-gateway'
       - 'node4.oap.devnet:host-gateway'
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://node4.oap.devnet/" ]
+      test: [ "CMD-SHELL", "curl -fsk --max-time 5 https://localhost/health-check | grep -q '\"ready\":true'" ]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 5s
+      start_period: 60s
     volumes:
       - ./cmd:/app/cmd
       - ./pkg:/app/pkg

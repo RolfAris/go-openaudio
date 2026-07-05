@@ -31,6 +31,13 @@ source_env_file() {
     done < "$file"
 }
 
+is_truthy() {
+    case "${1,,}" in
+        1|true|yes|y|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Promote externally-set legacy env vars to their OPENAUDIO_ counterparts
 # BEFORE sourcing /env/${NETWORK}.env. The bundled prod.env/stage.env files
 # ship OPENAUDIO_ defaults (e.g. OPENAUDIO_CORE_ROOT_DIR=/data/core); without
@@ -201,7 +208,7 @@ elif [ "${OPENAUDIO_TEST_HARNESS_MODE:-false}" = "true" ]; then
     exec "$@"
 else
     setup_postgres
-    if [ "${OPENAUDIO_CI:-false}" != "true" ] && [ "${OPENAUDIO_HOT_RELOAD:-false}" = "true" ]; then
+    if ! is_truthy "${OPENAUDIO_CI:-false}" && is_truthy "${OPENAUDIO_HOT_RELOAD:-false}"; then
         echo "Starting openaudio with hot reload (wgo)..."
         cd /app || exit 1
         # Use wgo to watch .go and .templ files, exclude generated files

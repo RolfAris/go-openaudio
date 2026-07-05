@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -70,7 +71,135 @@ func EnsureProtocol(endpoint string) string {
 	return endpoint
 }
 
+type devnetNode struct {
+	name string
+	rpc  string
+	sdk  *sdk.OpenAudioSDK
+}
+
+type readinessProbe struct {
+	name             string
+	rpc              string
+	statusReady      bool
+	height           int64
+	peerCount        int
+	statusErr        string
+	healthStatusCode int
+	storageHealthy   bool
+	walletRegistered bool
+	healthErr        string
+}
+
+func (p readinessProbe) ready(minHeight int64) bool {
+	return p.statusErr == "" &&
+		p.statusReady &&
+		p.height >= minHeight &&
+		p.healthErr == "" &&
+		p.healthStatusCode == http.StatusOK &&
+		p.storageHealthy &&
+		p.walletRegistered
+}
+
+func (p readinessProbe) String() string {
+	parts := []string{
+		fmt.Sprintf("%s(%s)", p.name, p.rpc),
+		fmt.Sprintf("ready=%t", p.statusReady),
+		fmt.Sprintf("height=%d", p.height),
+		fmt.Sprintf("peers=%d", p.peerCount),
+		fmt.Sprintf("storage_healthy=%t", p.storageHealthy),
+		fmt.Sprintf("wallet_registered=%t", p.walletRegistered),
+	}
+	if p.healthStatusCode != 0 {
+		parts = append(parts, fmt.Sprintf("health_status=%d", p.healthStatusCode))
+	}
+	if p.statusErr != "" {
+		parts = append(parts, "status_err="+p.statusErr)
+	}
+	if p.healthErr != "" {
+		parts = append(parts, "health_err="+p.healthErr)
+	}
+	return strings.Join(parts, " ")
+}
+
+func healthCheckURL(addr string) string {
+	baseURL := addr
+	if !strings.HasPrefix(baseURL, "https://") && !strings.HasPrefix(baseURL, "http://") {
+		baseURL = "https://" + baseURL
+	} else if strings.HasPrefix(baseURL, "http://") {
+		baseURL = strings.Replace(baseURL, "http://", "https://", 1)
+	}
+	return strings.TrimRight(baseURL, "/") + "/health-check"
+}
+
+func formatReadinessProbes(probes []readinessProbe) string {
+	if len(probes) == 0 {
+		return "no readiness probes captured"
+	}
+	parts := make([]string, 0, len(probes))
+	for _, probe := range probes {
+		parts = append(parts, probe.String())
+	}
+	return strings.Join(parts, "; ")
+}
+
+func probeDevnetReadiness(ctx context.Context, nodes []devnetNode, pollClient *http.Client) []readinessProbe {
+	probes := make([]readinessProbe, 0, len(nodes))
+	for _, node := range nodes {
+		probe := readinessProbe{name: node.name, rpc: node.rpc}
+
+		reqCtx, reqCancel := context.WithTimeout(ctx, 5*time.Second)
+		status, err := node.sdk.Core.GetStatus(reqCtx, connect.NewRequest(&corev1.GetStatusRequest{}))
+		reqCancel()
+		if err != nil {
+			probe.statusErr = err.Error()
+		} else if status.Msg == nil {
+			probe.statusErr = "empty status response"
+		} else {
+			probe.statusReady = status.Msg.GetReady()
+			probe.height = status.Msg.GetChainInfo().GetCurrentHeight()
+			probe.peerCount = len(status.Msg.GetPeers().GetPeers())
+		}
+
+		reqCtx, reqCancel = context.WithTimeout(ctx, 5*time.Second)
+		req, err := http.NewRequestWithContext(reqCtx, "GET", healthCheckURL(node.rpc), nil)
+		if err != nil {
+			probe.healthErr = err.Error()
+			reqCancel()
+			probes = append(probes, probe)
+			continue
+		}
+		resp, err := pollClient.Do(req)
+		reqCancel()
+		if err != nil {
+			probe.healthErr = err.Error()
+			probes = append(probes, probe)
+			continue
+		}
+
+		probe.healthStatusCode = resp.StatusCode
+		var healthResponse struct {
+			Storage struct {
+				Healthy            bool `json:"healthy"`
+				WalletIsRegistered bool `json:"wallet_is_registered"`
+			} `json:"storage"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&healthResponse); err != nil {
+			probe.healthErr = err.Error()
+		} else {
+			probe.storageHealthy = healthResponse.Storage.Healthy
+			probe.walletRegistered = healthResponse.Storage.WalletIsRegistered
+		}
+		resp.Body.Close()
+		probes = append(probes, probe)
+	}
+	return probes
+}
+
 func WaitForDevnetHealthy(timeout ...time.Duration) error {
+	return WaitForDevnetReady(3, timeout...)
+}
+
+func WaitForDevnetReady(minHeight int64, timeout ...time.Duration) error {
 	timeoutDuration := 300 * time.Second
 	if len(timeout) > 0 {
 		timeoutDuration = timeout[0]
@@ -78,17 +207,11 @@ func WaitForDevnetHealthy(timeout ...time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutDuration)
 	defer cancel()
 
-	nodes := []*sdk.OpenAudioSDK{
-		DiscoveryOne,
-		ContentOne,
-		ContentTwo,
-		ContentThree,
-	}
-
-	nodeAddresses := []string{
-		ContentOneRPC,
-		ContentTwoRPC,
-		ContentThreeRPC,
+	nodes := []devnetNode{
+		{name: "discovery-one", rpc: DiscoveryOneRPC, sdk: DiscoveryOne},
+		{name: "content-one", rpc: ContentOneRPC, sdk: ContentOne},
+		{name: "content-two", rpc: ContentTwoRPC, sdk: ContentTwo},
+		{name: "content-three", rpc: ContentThreeRPC, sdk: ContentThree},
 	}
 
 	ticker := time.NewTicker(1 * time.Second)
@@ -103,61 +226,35 @@ func WaitForDevnetHealthy(timeout ...time.Duration) error {
 		Timeout: 5 * time.Second,
 	}
 
-	checkReady := func() bool {
-		for _, n := range nodes {
-			reqCtx, reqCancel := context.WithTimeout(ctx, 5*time.Second)
-			status, err := n.Core.GetStatus(reqCtx, connect.NewRequest(&corev1.GetStatusRequest{}))
-			reqCancel()
-			if err != nil || status.Msg == nil || !status.Msg.Ready {
-				return false
+	checkReady := func() ([]readinessProbe, bool) {
+		probes := probeDevnetReadiness(ctx, nodes, pollClient)
+		for _, probe := range probes {
+			if !probe.ready(minHeight) {
+				return probes, false
 			}
 		}
-
-		for _, addr := range nodeAddresses {
-			baseURL := addr
-			if !strings.HasPrefix(baseURL, "https://") && !strings.HasPrefix(baseURL, "http://") {
-				baseURL = "https://" + baseURL
-			} else if strings.HasPrefix(baseURL, "http://") {
-				baseURL = strings.Replace(baseURL, "http://", "https://", 1)
-			}
-
-			reqCtx, reqCancel := context.WithTimeout(ctx, 5*time.Second)
-			req, err := http.NewRequestWithContext(reqCtx, "GET", baseURL+"/health-check", nil)
-			if err != nil {
-				reqCancel()
-				return false
-			}
-			resp, err := pollClient.Do(req)
-			reqCancel()
-			if err != nil {
-				return false
-			}
-
-			var healthResponse struct {
-				Storage struct {
-					WalletIsRegistered bool `json:"wallet_is_registered"`
-				} `json:"storage"`
-			}
-			ok := resp.StatusCode == 200 &&
-				json.NewDecoder(resp.Body).Decode(&healthResponse) == nil &&
-				healthResponse.Storage.WalletIsRegistered
-			resp.Body.Close()
-			if !ok {
-				return false
-			}
-		}
-		return true
+		return probes, true
 	}
 
-	if checkReady() {
+	lastProbes, ready := checkReady()
+	if ready {
 		return nil
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.New("timed out waiting for devnet to be ready")
+			if len(lastProbes) == 0 {
+				return errors.New("timed out waiting for devnet to be ready")
+			}
+			return fmt.Errorf(
+				"timed out waiting for devnet to be ready after %s (min_height=%d): %s",
+				timeoutDuration,
+				minHeight,
+				formatReadinessProbes(lastProbes),
+			)
 		case <-ticker.C:
-			if checkReady() {
+			lastProbes, ready = checkReady()
+			if ready {
 				return nil
 			}
 		}
