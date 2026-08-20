@@ -106,6 +106,7 @@ type MediorumConfig struct {
 	RepairEnabled     bool          `default:"true"`
 	RepairInterval    time.Duration `default:"1h"`
 	RepairConcurrency int           `default:"1"`
+	SkipCleanupValidation bool
 
 	// PresenceStoreEnabled turns on the durable blob_presence store. Off by
 	// default: with it off, every repair cycle enumerates its buckets exactly
