@@ -86,6 +86,7 @@ type MediorumConfig struct {
 	RepairEnabled             bool          `default:"true"`
 	RepairInterval            time.Duration `default:"1h"`
 	RepairConcurrency         int           `default:"1"`
+	SkipCleanupValidation     bool
 
 	// Archive mode (OPENAUDIO_ARCHIVE) keeps all history: no core block pruning
 	// and no mediorum op-log pruning. Otherwise ops older than OpsRetention are pruned.

@@ -140,6 +140,10 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 	repairEnabled := env.Get("true", "OPENAUDIO_REPAIR_ENABLED") == "true"
 	repairInterval := env.GetDuration(time.Hour, "OPENAUDIO_REPAIR_INTERVAL")
 	repairConcurrency := env.GetInt(1, "OPENAUDIO_REPAIR_CONCURRENCY")
+	repairCleanupContentValidationDisabled := strings.EqualFold(
+		env.Get("true", "OPENAUDIO_REPAIR_CLEANUP_VALIDATE_CONTENT"),
+		"false",
+	)
 	storeRecentTTL := parseStoreRecentTTL(env.String("OPENAUDIO_STORE_RECENT_TTL"))
 
 	// Archive mode keeps all history (no ops pruning). Otherwise the append-only
@@ -179,6 +183,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		RepairEnabled:             repairEnabled,
 		RepairInterval:            repairInterval,
 		RepairConcurrency:         repairConcurrency,
+		SkipCleanupValidation:     repairCleanupContentValidationDisabled,
 		Archive:                   archive,
 		OpsRetention:              opsRetention,
 		OpsPruneInterval:          opsPruneInterval,
