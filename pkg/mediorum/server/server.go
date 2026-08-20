@@ -86,6 +86,7 @@ type MediorumConfig struct {
 	RepairEnabled             bool          `default:"true"`
 	RepairInterval            time.Duration `default:"1h"`
 	RepairConcurrency         int           `default:"1"`
+	SkipCleanupValidation     bool
 
 	// Waveform analysis is entirely opt-in: all three switches default to
 	// false, so a node that sets nothing behaves exactly as before.
