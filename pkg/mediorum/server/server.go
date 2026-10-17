@@ -102,10 +102,10 @@ type MediorumConfig struct {
 	// AsyncPullTimeout bounds one queued transfer, and with it how long a
 	// source must keep serving a blob after answering 202 -- raising it loosens
 	// an invariant nothing else checks. See asyncPullTimeout.
-	AsyncPullTimeout  time.Duration `default:"60m"`
-	RepairEnabled     bool          `default:"true"`
-	RepairInterval    time.Duration `default:"1h"`
-	RepairConcurrency int           `default:"1"`
+	AsyncPullTimeout      time.Duration `default:"60m"`
+	RepairEnabled         bool          `default:"true"`
+	RepairInterval        time.Duration `default:"1h"`
+	RepairConcurrency     int           `default:"1"`
 	SkipCleanupValidation bool
 
 	// PresenceStoreEnabled turns on the durable blob_presence store. Off by
