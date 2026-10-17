@@ -753,7 +753,9 @@ func (ss *MediorumServer) repairCidWithPolicy(ctx context.Context, cid string, p
 	// re-hashed the archive copy, so what gets dropped here is a duplicate of
 	// bytes verified moments ago. ContentSize is deliberately untouched: it
 	// counted the archive copy, never this one.
-	if tracker.CleanupMode && alreadyHave && isArchive &&
+	// Skipping body validation must not discard a potentially good primary
+	// copy in favor of archive bytes that this pass did not verify.
+	if tracker.CleanupMode && !ss.Config.SkipCleanupValidation && alreadyHave && isArchive &&
 		ss.blobPresentIn(ctx, presenceIndex, ss.bucket, key) {
 		tracker.mu.Lock()
 		tracker.Counters["archive_primary_duplicate_needed"]++

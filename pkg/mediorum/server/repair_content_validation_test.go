@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -50,4 +51,35 @@ func TestRepairCleanupContentValidationControl(t *testing.T) {
 	require.NoError(t, ss.repairCid(ctx, cid, []string{ss.Config.Self.Host}, enabledTracker, nil))
 	assert.False(t, ss.haveInMyBucket(cid))
 	assert.Equal(t, 1, enabledTracker.Counters["delete_invalid_success"])
+}
+
+// Without a hash check, an existing archive object is not proof that its
+// bytes can replace the good primary copy. Preserve that copy in skip mode.
+func TestRepairCleanupWithoutValidationPreservesPrimaryArchiveCopy(t *testing.T) {
+	ctx := context.Background()
+	primary, archive := openMemBuckets(t)
+	ss := makeArchiveEvictionServer(t, primary, archive, 4)
+	ss.Config.SkipCleanupValidation = true
+	var cid string
+	var data []byte
+	for i := 0; i < 1000; i++ {
+		data = []byte(fmt.Sprintf("valid-primary-%d", i))
+		var err error
+		cid, err = cidutil.ComputeFileCID(bytes.NewReader(data))
+		require.NoError(t, err)
+		if ss.bucketForCID(cid, nil) == archive {
+			break
+		}
+	}
+	require.Equal(t, archive, ss.bucketForCID(cid, nil))
+	key := cidutil.ShardCID(cid)
+	require.NoError(t, primary.WriteAll(ctx, key, data, nil))
+	require.NoError(t, archive.WriteAll(ctx, key, []byte("corrupt archive copy"), nil))
+	tracker := newCleanupTracker(true)
+	policy := newRepairRetentionPolicy(ss.Config, time.Now())
+	require.NoError(t, ss.repairCidWithPolicy(ctx, cid, nil, tracker, nil, policy, time.Time{}))
+	got, err := primary.ReadAll(ctx, key)
+	require.NoError(t, err, "unvalidated archive must not replace the primary copy")
+	assert.Equal(t, data, got)
+	assert.Zero(t, tracker.Counters["archive_primary_duplicate_dropped"])
 }
