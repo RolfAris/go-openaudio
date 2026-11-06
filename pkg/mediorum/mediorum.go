@@ -140,6 +140,10 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 	repairEnabled := env.Get("true", "OPENAUDIO_REPAIR_ENABLED") == "true"
 	repairInterval := env.GetDuration(time.Hour, "OPENAUDIO_REPAIR_INTERVAL")
 	repairConcurrency := env.GetInt(1, "OPENAUDIO_REPAIR_CONCURRENCY")
+	repairCleanupContentValidationDisabled := strings.EqualFold(
+		env.Get("true", "OPENAUDIO_REPAIR_CLEANUP_VALIDATE_CONTENT"),
+		"false",
+	)
 	presenceWalkConcurrency := env.GetInt(1, "OPENAUDIO_PRESENCE_WALK_CONCURRENCY")
 	presenceStoreEnabled := env.Get("false", "OPENAUDIO_PRESENCE_STORE_ENABLED") == "true"
 	asyncPullWorkers := env.GetInt(server.DefaultAsyncPullWorkers, "OPENAUDIO_ASYNC_PULL_WORKERS")
@@ -194,6 +198,7 @@ func runMediorum(lc *lifecycle.Lifecycle, logger *zap.Logger, mediorumEnv string
 		RepairEnabled:             repairEnabled,
 		RepairInterval:            repairInterval,
 		RepairConcurrency:         repairConcurrency,
+		SkipCleanupValidation:     repairCleanupContentValidationDisabled,
 		PresenceWalkConcurrency:   presenceWalkConcurrency,
 		PresenceStoreEnabled:      presenceStoreEnabled,
 		Archive:                   archive,

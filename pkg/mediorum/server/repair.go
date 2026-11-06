@@ -124,7 +124,9 @@ func (ss *MediorumServer) startRepairer(ctx context.Context) error {
 	}
 
 	repairInterval := ss.Config.RepairInterval
-	logger.Info("repair configured", zap.Duration("interval", repairInterval))
+	logger.Info("repair configured",
+		zap.Duration("interval", repairInterval),
+		zap.Bool("cleanupContentValidation", !ss.Config.SkipCleanupValidation))
 
 	// wait a minute on startup to determine healthy peers
 	ticker := time.NewTicker(1 * time.Minute)
@@ -661,7 +663,7 @@ func (ss *MediorumServer) repairCidWithPolicy(ctx context.Context, cid string, p
 
 	// in cleanup mode do some extra checks:
 	// - validate CID, delete if invalid (doesn't apply to Qm keys because their hash is not the CID)
-	if tracker.CleanupMode && alreadyHave && !cidutil.IsLegacyCID(cid) {
+	if tracker.CleanupMode && !ss.Config.SkipCleanupValidation && alreadyHave && !cidutil.IsLegacyCID(cid) {
 		if r, errRead := bucket.NewReader(ctx, key, nil); errRead == nil {
 			computed, errCompute := cidutil.ComputeFileCID(r)
 			errClose := r.Close()
@@ -751,7 +753,9 @@ func (ss *MediorumServer) repairCidWithPolicy(ctx context.Context, cid string, p
 	// re-hashed the archive copy, so what gets dropped here is a duplicate of
 	// bytes verified moments ago. ContentSize is deliberately untouched: it
 	// counted the archive copy, never this one.
-	if tracker.CleanupMode && alreadyHave && isArchive &&
+	// Skipping body validation must not discard a potentially good primary
+	// copy in favor of archive bytes that this pass did not verify.
+	if tracker.CleanupMode && !ss.Config.SkipCleanupValidation && alreadyHave && isArchive &&
 		ss.blobPresentIn(ctx, presenceIndex, ss.bucket, key) {
 		tracker.mu.Lock()
 		tracker.Counters["archive_primary_duplicate_needed"]++
